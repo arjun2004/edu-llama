@@ -246,12 +246,12 @@ class OpenRouterClient:
 # Usage Example
 if __name__ == "__main__":
     # Initialize client with explicit API key
-    api_key = "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"
+    api_key = "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"
     client = OpenRouterClient(api_key)
     
     # Original functionality still works
-    response = client.simple_prompt("do you know mar baselios college tvm?")
-    print("Response:", response)
+    # response = client.simple_prompt("do you know mar baselios college tvm?")
+    # print("Response:", response)
     
     # PDF FUNCTIONALITY EXAMPLE - UNCOMMENT AND MODIFY PATH:
     
