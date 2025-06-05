@@ -1,3 +1,11 @@
 PyPDF2
 streamlit
 requests
+SpeechRecognition
+pyttsx3
+pyaudio  
+streamlit
+requests
+PyPDF2
+SpeechRecognition
+pyttsx3
