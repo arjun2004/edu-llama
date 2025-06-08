@@ -663,64 +663,58 @@ def main():
         # If there's voice input, clear it after using
         if st.session_state.voice_input:
             st.session_state.voice_input = ""
+            # Trigger send if there's voice input
+            if user_input:
+                st.session_state.chat_history.append({
+                    "role": "user",
+                    "content": user_input,
+                    "timestamp": datetime.now().strftime("%H:%M")
+                })
+                
+                # Get AI response
+                with st.spinner("🤖 AI is thinking..."):
+                    if st.session_state.pdf_loaded:
+                        response = st.session_state.client.ask_pdf_question(user_input)
+                    else:
+                        response = st.session_state.client.simple_prompt(user_input)
+                    
+                    # Add AI response to history
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": response,
+                        "timestamp": datetime.now().strftime("%H:%M")
+                    })
+                    
+                    # Auto-speak if enabled
+                    if auto_speak and voice_enabled and st.session_state.voice_handler:
+                        st.session_state.voice_handler.speak_text(response)
+                
+                st.rerun()
     
     with col2:
         if voice_enabled and st.session_state.voice_handler and st.session_state.voice_handler.microphone:
             if st.button("🎤 Voice", help="Click to use voice input", key="voice_button"):
                 st.session_state.listening = True
-                placeholder = st.empty()
-                with placeholder:
-                    st.info("🎤 Listening... Speak now!")
-                
-                # Get voice input
-                speech_text = st.session_state.voice_handler.listen_for_speech()
-                
-                placeholder.empty()
-                
-                if not speech_text.startswith("Error"):
-                    st.session_state.voice_input = speech_text
-                    st.success(f"🎤 Voice captured: {speech_text}")
-                    st.rerun()
-                else:
-                    st.error(speech_text)
-                
-                st.session_state.listening = False
+                st.rerun()  # Rerun to show the listening state
         else:
             st.button("🎤 Voice", disabled=True, help="Voice input not available")
     
+    # Show listening prompt if in listening state
+    if st.session_state.listening:
+        st.info("🎤 Listening... Speak now!")
+        speech_text = st.session_state.voice_handler.listen_for_speech()
+        
+        if not speech_text.startswith("Error"):
+            st.session_state.voice_input = speech_text
+            st.success(f"🎤 Voice captured: {speech_text}")
+        else:
+            st.error(speech_text)
+        
+        st.session_state.listening = False
+        st.rerun()
+    
     with col3:
         send_button = st.button("📤 Send", type="primary")
-    
-    # Handle message sending
-    if send_button and user_input:
-        # Add user message to history
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": user_input,
-            "timestamp": datetime.now().strftime("%H:%M")
-        })
-        
-        # Get AI response
-        with st.spinner("🤖 AI is thinking..."):
-            if st.session_state.pdf_loaded:
-                response = st.session_state.client.ask_pdf_question(user_input)
-            else:
-                response = st.session_state.client.simple_prompt(user_input)
-            
-            # Add AI response to history
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": response,
-                "timestamp": datetime.now().strftime("%H:%M")
-            })
-            
-            # Auto-speak if enabled
-            if auto_speak and voice_enabled and st.session_state.voice_handler:
-                st.session_state.voice_handler.speak_text(response)
-        
-        # Clear the input field
-        st.session_state.voice_input = ""
-        st.rerun()
     
     # Footer with helpful tips
     with st.expander("💡 Tips & Features"):
