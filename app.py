@@ -14,6 +14,95 @@ import tempfile
 import os
 import platform
 from datetime import datetime
+import crawl4ai
+from PIL import Image
+import requests
+from bs4 import BeautifulSoup
+import asyncio
+
+class ImageScraper:
+    def __init__(self):
+        self.crawler = crawl4ai.AsyncWebCrawler(
+            config=crawl4ai.BrowserConfig(
+                browser_type='chromium',
+                headless=True,
+                verbose=True,  # Enable verbose logging
+                ignore_https_errors=True,
+                java_script_enabled=True,
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            )
+        )
+    
+    async def search_images(self, query: str, max_images: int = 3) -> List[Dict]:
+        """Search for images related to the query"""
+        try:
+            st.info(f"🔍 Searching for images related to: {query}")
+            
+            # Construct the search URL
+            search_url = f"https://www.google.com/search?q={query}&tbm=isch"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+            
+            # Get the search results page
+            response = requests.get(search_url, headers=headers)
+            if response.status_code != 200:
+                st.error(f"Failed to fetch search results: HTTP {response.status_code}")
+                return []
+            
+            # Parse the HTML
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find all image elements
+            img_elements = soup.find_all('img')
+            st.info(f"Found {len(img_elements)} potential images")
+            
+            # Process and validate images
+            valid_images = []
+            for idx, img in enumerate(img_elements):
+                if len(valid_images) >= max_images:
+                    break
+                
+                try:
+                    # Try different attributes for image URL
+                    img_url = img.get('src') or img.get('data-src')
+                    if not img_url or not img_url.startswith('http'):
+                        continue
+                    
+                    st.info(f"Processing image {idx + 1}: {img_url}")
+                    
+                    # Download and validate image
+                    img_response = requests.get(img_url, headers=headers, timeout=5)
+                    if img_response.status_code == 200:
+                        img = Image.open(BytesIO(img_response.content))
+                        # Convert to RGB if needed
+                        if img.mode in ('RGBA', 'P'):
+                            img = img.convert('RGB')
+                        # Resize if too large
+                        if max(img.size) > 800:
+                            img.thumbnail((800, 800))
+                        # Convert to bytes
+                        img_byte_arr = BytesIO()
+                        img.save(img_byte_arr, format='JPEG')
+                        img_byte_arr = img_byte_arr.getvalue()
+                        
+                        valid_images.append({
+                            'url': img_url,
+                            'title': f"Image related to: {query}",
+                            'image_data': img_byte_arr
+                        })
+                        st.success(f"Successfully processed image {idx + 1}")
+                    else:
+                        st.warning(f"Failed to download image {idx + 1}: HTTP {img_response.status_code}")
+                except Exception as e:
+                    st.warning(f"Failed to process image {idx + 1}: {str(e)}")
+                    continue
+            
+            st.info(f"Successfully processed {len(valid_images)} images")
+            return valid_images
+        except Exception as e:
+            st.error(f"Image search error: {str(e)}")
+            return []
 
 class VoiceHandler:
     def __init__(self):
@@ -168,6 +257,8 @@ class OpenRouterClient:
         }
         # Store PDF content for follow-up questions
         self.pdf_content = ""
+        # Initialize image scraper
+        self.image_scraper = ImageScraper()
     
     def chat_completion(self, 
                        messages: List[Dict[str, str]], 
@@ -199,63 +290,73 @@ class OpenRouterClient:
         except json.JSONDecodeError as e:
             return {"error": f"JSON decode failed: {str(e)}"}
     
-    def simple_prompt(self, prompt: str) -> str:
-        """
-        Send a prompt to the model using LLaMA 3.1 with a learning assistant persona.
-        Politely declines to answer off-topic or irrelevant questions.
-        """
-
-        # Optional: Early filter for clearly off-topic questions
-        off_topic_keywords = [
-            "joke", "celebrity", "politics", "game", "song", "weather", 
-            "funny", "gossip", "sports", "movie", "actor", "meme"
-        ]
-        if any(keyword in prompt.lower() for keyword in off_topic_keywords):
-            return "I'm here to help with educational topics. Could you ask something related to your studies?"
-
-        # Full message setup for the learning assistant persona
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a dedicated and friendly AI learning assistant. "
-                    "Your primary goal is to support students and educators by answering questions related to academic subjects, "
-                    "study materials, and educational topics. You can explain concepts, summarize content, and offer guidance across "
-                    "a range of disciplines like math, science, history, literature, and computer science.\n\n"
-                    
-                    "If a user asks something unrelated to learning—such as about entertainment, politics, or personal opinions—"
-                    "you must politely decline by saying:\n"
-                    "\"I'm here to help with educational topics. Could you ask something related to your studies?\"\n\n"
-
-                    "Keep your tone clear, respectful, and student-friendly. Provide well-structured, fact-based answers. "
-                    "When appropriate, include simple examples, analogies, or step-by-step explanations to aid understanding."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            },
-            {
-                "role": "system",
-                "content": (
-                    "Ensure that your response stays on topic, avoids speculation, and avoids humor or casual banter. "
-                    "Use bullet points or short paragraphs for clarity when needed. Focus only on the educational value."
-                )
-            }
-        ]
-
-        # Call LLM
-        result = self.chat_completion(messages, "meta-llama/llama-3.1-8b-instruct:free")
-
-        # Handle error or missing output
-        if not result or "error" in result:
-            return f"Error: {result.get('error', 'Unknown error occurred')}"
-
+    async def simple_prompt(self, prompt: str) -> Dict:
+        """Get a simple text response from the model"""
         try:
-            content = result["choices"][0]["message"]["content"].strip()
-            return content if content else "Sorry, I couldn't generate a response. Please try rephrasing your question."
-        except (KeyError, IndexError, TypeError):
-            return "Error: Unexpected response format from the model."
+            # Get text response using chat completion
+            text_response = self.chat_completion(
+                [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a dedicated and friendly AI learning assistant. "
+                            "Your primary goal is to support students and educators by answering questions related to academic subjects, "
+                            "study materials, and educational topics. You can explain concepts, summarize content, and offer guidance across "
+                            "a range of disciplines like math, science, history, literature, and computer science.\n\n"
+                            
+                            "If a user asks something unrelated to learning—such as about entertainment, politics, or personal opinions—"
+                            "you must politely decline by saying:\n"
+                            "\"I'm here to help with educational topics. Could you ask something related to your studies?\"\n\n"
+
+                            "Keep your tone clear, respectful, and student-friendly. Provide well-structured, fact-based answers. "
+                            "When appropriate, include simple examples, analogies, or step-by-step explanations to aid understanding."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "meta-llama/llama-3.1-8b-instruct:free"
+            )
+
+            # Handle error or missing output
+            if not text_response or "error" in text_response:
+                return {
+                    'text': f"Error: {text_response.get('error', 'Unknown error occurred')}",
+                    'images': []
+                }
+
+            try:
+                content = text_response["choices"][0]["message"]["content"].strip()
+                text_content = content if content else "Sorry, I couldn't generate a response. Please try rephrasing your question."
+                
+                # Get images asynchronously
+                images = await self.image_scraper.search_images(prompt)
+                st.info(f"Found {len(images)} images for prompt: {prompt}")
+                
+                # Structure the response
+                result = {
+                    'text': text_content,
+                    'images': images
+                }
+                
+                st.info(f"Response structure: {result}")
+                return result
+                
+            except (KeyError, IndexError, TypeError) as e:
+                st.error(f"Error processing response: {str(e)}")
+                return {
+                    'text': "Error: Unexpected response format from the model.",
+                    'images': []
+                }
+                
+        except Exception as e:
+            st.error(f"Error in simple_prompt: {str(e)}")
+            return {
+                'text': f"Error: {str(e)}",
+                'images': []
+            }
 
     def extract_pdf_from_bytes(self, pdf_bytes: bytes) -> str:
         """Extract text from PDF bytes"""
@@ -340,40 +441,46 @@ def create_audio_download_link(audio_bytes, filename="response.wav"):
         return href
     return ""
 
-def display_message(role, content, timestamp=None, show_audio=False, voice_handler=None):
-    """Display a chat message with styling similar to ChatGPT"""
-    if timestamp is None:
-        timestamp = datetime.now().strftime("%H:%M")
-    
-    # Create columns for avatar and content
-    if role == "user":
-        col1, col2 = st.columns([0.1, 0.9])
-        with col1:
-            st.markdown("**👤**")
-        with col2:
-            st.markdown(f"**You** · {timestamp}")
-            st.markdown(content)
-    else:
-        col1, col2, col3 = st.columns([0.1, 0.7, 0.2])
-        with col1:
-            st.markdown("**🤖**")
-        with col2:
-            st.markdown(f"**AI Assistant** · {timestamp}")
-            st.markdown(content)
-        with col3:
-            if show_audio and voice_handler and voice_handler.tts_engine:
-                # Create unique keys for buttons
-                speak_key = f"speak_{timestamp}_{hash(content)}"
-                stop_key = f"stop_{timestamp}_{hash(content)}"
+def display_message(message: Dict):
+    """Display a message in the chat interface"""
+    try:
+        # Get message content
+        content = message.get('content', '')
+        role = message.get('role', 'assistant')
+        
+        # Create message container
+        with st.chat_message(role):
+            # Display text content
+            if isinstance(content, str):
+                st.write(content)
+            elif isinstance(content, dict):
+                # Handle text content
+                if 'text' in content:
+                    st.write(content['text'])
                 
-                if voice_handler.is_speaking:
-                    if st.button("⏹️ Stop", key=stop_key, help="Stop speaking"):
-                        voice_handler.stop_speech()
-                        st.rerun()
+                # Handle images
+                if 'images' in content:
+                    st.info(f"Found {len(content['images'])} images to display")
+                    for idx, img in enumerate(content['images']):
+                        try:
+                            if isinstance(img, dict) and 'image_data' in img:
+                                st.image(img['image_data'], caption=img.get('title', f'Image {idx + 1}'))
+                                st.success(f"Successfully displayed image {idx + 1}")
+                            else:
+                                st.warning(f"Invalid image data format for image {idx + 1}")
+                        except Exception as e:
+                            st.error(f"Error displaying image {idx + 1}: {str(e)}")
                 else:
-                    if st.button("🔊 Play", key=speak_key, help="Speak response"):
-                        voice_handler.speak_text(content)
-                        st.rerun()
+                    st.warning("No images found in content")
+            else:
+                st.warning(f"Unexpected content type: {type(content)}")
+            
+            # Display timestamp if available
+            if 'timestamp' in message:
+                st.caption(message['timestamp'])
+    except Exception as e:
+        st.error(f"Error displaying message: {str(e)}")
+        st.error(f"Message content: {message}")
 
 def main():
     st.set_page_config(
@@ -624,17 +731,7 @@ def main():
     with chat_container:
         if st.session_state.chat_history:
             for message in st.session_state.chat_history:
-                if message["role"] == "system":
-                    st.info(message["content"])
-                else:
-                    display_message(
-                        message["role"], 
-                        message["content"], 
-                        message["timestamp"],
-                        show_audio=(message["role"] == "assistant" and voice_enabled),
-                        voice_handler=st.session_state.voice_handler
-                    )
-                st.markdown("---")
+                display_message(message)
         else:
             st.markdown("""
             <div style="text-align: center; padding: 2rem; color: #666;">
@@ -659,37 +756,6 @@ def main():
             label_visibility="collapsed",
             key="user_text_input"
         )
-        
-        # If there's voice input, clear it after using
-        if st.session_state.voice_input:
-            st.session_state.voice_input = ""
-            # Trigger send if there's voice input
-            if user_input:
-                st.session_state.chat_history.append({
-                    "role": "user",
-                    "content": user_input,
-                    "timestamp": datetime.now().strftime("%H:%M")
-                })
-                
-                # Get AI response
-                with st.spinner("🤖 AI is thinking..."):
-                    if st.session_state.pdf_loaded:
-                        response = st.session_state.client.ask_pdf_question(user_input)
-                    else:
-                        response = st.session_state.client.simple_prompt(user_input)
-                    
-                    # Add AI response to history
-                    st.session_state.chat_history.append({
-                        "role": "assistant",
-                        "content": response,
-                        "timestamp": datetime.now().strftime("%H:%M")
-                    })
-                    
-                    # Auto-speak if enabled
-                    if auto_speak and voice_enabled and st.session_state.voice_handler:
-                        st.session_state.voice_handler.speak_text(response)
-                
-                st.rerun()
     
     with col2:
         if voice_enabled and st.session_state.voice_handler and st.session_state.voice_handler.microphone:
@@ -715,6 +781,46 @@ def main():
     
     with col3:
         send_button = st.button("📤 Send", type="primary")
+    
+    # Handle sending the message
+    if (send_button or st.session_state.voice_input) and user_input:
+        # Add user message to chat history
+        st.session_state.chat_history.append({
+            "role": "user",
+            "content": user_input,
+            "timestamp": datetime.now().strftime("%H:%M")
+        })
+        
+        # Clear voice input if it was used
+        if st.session_state.voice_input:
+            st.session_state.voice_input = ""
+        
+        # Get AI response
+        with st.spinner("🤖 AI is thinking..."):
+            try:
+                if st.session_state.pdf_loaded:
+                    response = st.session_state.client.ask_pdf_question(user_input)
+                else:
+                    # Run async operation
+                    response = asyncio.run(st.session_state.client.simple_prompt(user_input))
+                
+                # Add AI response to history
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": response,
+                    "timestamp": datetime.now().strftime("%H:%M")
+                })
+                
+                # Auto-speak if enabled
+                if auto_speak and voice_enabled and st.session_state.voice_handler:
+                    text_to_speak = response['text'] if isinstance(response, dict) else response
+                    st.session_state.voice_handler.speak_text(text_to_speak)
+                
+                # Force a rerun to update the display
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error getting AI response: {str(e)}")
+                st.rerun()
     
     # Footer with helpful tips
     with st.expander("💡 Tips & Features"):

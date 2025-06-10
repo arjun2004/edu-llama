@@ -3,9 +3,7 @@ streamlit
 requests
 SpeechRecognition
 pyttsx3
-pyaudio  
-streamlit
-requests
-PyPDF2
-SpeechRecognition
-pyttsx3
+pyaudio
+crawl4ai
+Pillow
+beautifulsoup4
