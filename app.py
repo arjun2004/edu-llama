@@ -14,84 +14,231 @@ import tempfile
 import os
 import platform
 from datetime import datetime
-import crawl4ai
+import re
 from PIL import Image
-import requests
-from bs4 import BeautifulSoup
 import asyncio
 
 class ImageScraper:
     def __init__(self):
-        self.crawler = crawl4ai.AsyncWebCrawler(
-            config=crawl4ai.BrowserConfig(
-                browser_type='chromium',
-                headless=True,
-                verbose=True,  # Enable verbose logging
-                ignore_https_errors=True,
-                java_script_enabled=True,
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            )
-        )
+        # Firecrawl API configuration
+        self.firecrawl_api_key = "fc-90a16588f1684a14a4c35396cea6d911"
+        self.firecrawl_scrape_url = "https://api.firecrawl.dev/v1/scrape"
     
-    async def search_images(self, query: str, max_images: int = 3) -> List[Dict]:
-        """Search for images related to the query"""
+    def extract_search_keywords(self, prompt: str) -> str:
+        """Extract relevant keywords from user prompt for image search"""
+        # Remove common question words and phrases
+        question_words = [
+            'what', 'is', 'are', 'how', 'why', 'when', 'where', 'who', 'which',
+            'tell', 'me', 'about', 'explain', 'describe', 'define', 'definition',
+            'can', 'you', 'please', 'help', 'understand', 'learning', 'study',
+            'the', 'a', 'an', 'and', 'or', 'but', 'for', 'in', 'on', 'at',
+            'to', 'of', 'with', 'by', 'from', 'as', 'like', 'than'
+        ]
+        
+        # Convert to lowercase and split into words
+        words = prompt.lower().split()
+        
+        # Remove question words and keep meaningful terms
+        meaningful_words = []
+        for word in words:
+            # Remove punctuation
+            clean_word = re.sub(r'[^\w\s]', '', word)
+            if clean_word and clean_word not in question_words and len(clean_word) > 2:
+                meaningful_words.append(clean_word)
+        
+        # If we have meaningful words, join them
+        if meaningful_words:
+            # Take the first 2-3 most relevant words to avoid overly specific searches
+            search_terms = meaningful_words[:3]
+            return ' '.join(search_terms)
+        
+        # Fallback: use original prompt if no meaningful words found
+        return prompt
+    
+    def get_images_simple_scrape(self, query: str) -> List[str]:
+        """Simplified approach using Firecrawl API"""
+        
+        headers = {
+            "Authorization": f"Bearer {self.firecrawl_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Try Wikipedia first as it's more scraping-friendly
+        wikipedia_url = f"https://en.wikipedia.org/wiki/{query.replace(' ', '_')}"
+        
+        data = {
+            "url": wikipedia_url,
+            "formats": ["markdown", "html"],
+            "onlyMainContent": True
+        }
+        
         try:
-            st.info(f"🔍 Searching for images related to: {query}")
+            response = requests.post(self.firecrawl_scrape_url, headers=headers, json=data)
             
-            # Construct the search URL
-            search_url = f"https://www.google.com/search?q={query}&tbm=isch"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-            
-            # Get the search results page
-            response = requests.get(search_url, headers=headers)
-            if response.status_code != 200:
-                st.error(f"Failed to fetch search results: HTTP {response.status_code}")
+            if response.status_code == 200:
+                json_data = response.json()
+                
+                # Look for images in the correct nested structure
+                images = []
+                
+                # Check the correct nested structure: json_data['data']
+                if 'data' in json_data:
+                    data_content = json_data['data']
+                    
+                    # Check if there's a direct images field in data
+                    if isinstance(data_content, dict) and 'images' in data_content:
+                        images = data_content['images']
+                    
+                    # Check in metadata within data
+                    elif isinstance(data_content, dict) and 'metadata' in data_content and 'images' in data_content['metadata']:
+                        images = data_content['metadata']['images']
+                    
+                    # Parse HTML content for images if available
+                    elif isinstance(data_content, dict) and 'html' in data_content:
+                        html_content = data_content['html']
+                        # Simple regex to find image URLs
+                        img_pattern = r'<img[^>]+src="([^"]+)"'
+                        found_images = re.findall(img_pattern, html_content)
+                        # Filter for valid URLs and convert relative URLs to absolute
+                        for img in found_images:
+                            if img.startswith('http'):
+                                images.append(img)
+                            elif img.startswith('//'):
+                                images.append('https:' + img)
+                            elif img.startswith('/'):
+                                images.append('https://en.wikipedia.org' + img)
+                    
+                    # Also check markdown content for image references
+                    elif isinstance(data_content, dict) and 'markdown' in data_content:
+                        markdown_content = data_content['markdown']
+                        # Find markdown images ![alt](url)
+                        md_img_pattern = r'!\[.*?\]\((https?://[^\)]+)\)'
+                        found_images = re.findall(md_img_pattern, markdown_content)
+                        images.extend(found_images)
+                
+                # Remove duplicates and filter out small icons
+                unique_images = []
+                seen = set()
+                for img in images:
+                    if img not in seen and not any(skip in img.lower() for skip in ['icon', 'favicon', 'logo', 'thumb/1', 'thumb/2']):
+                        unique_images.append(img)
+                        seen.add(img)
+                
+                return unique_images[:3]
+            else:
+                st.error(f"Firecrawl API Error: {response.status_code} - {response.text}")
                 return []
+                
+        except Exception as e:
+            st.error(f"Exception in image scraping: {str(e)}")
+            return []
+    
+    def get_images_from_alternative_sources(self, query: str) -> List[str]:
+        """Try multiple sources for images related to the query"""
+        
+        # Alternative image sources that are more scraping-friendly
+        sources = [
+            f"https://commons.wikimedia.org/wiki/Special:Search?search={query.replace(' ', '+')}&go=Go",
+            f"https://pixabay.com/images/search/{query.replace(' ', '+')}/",
+            f"https://unsplash.com/s/photos/{query.replace(' ', '+')}"
+        ]
+        
+        headers = {
+            "Authorization": f"Bearer {self.firecrawl_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        all_images = []
+        
+        for source_url in sources:
+            try:
+                data = {
+                    "url": source_url,
+                    "formats": ["extract"],
+                    "extract": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "images": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of image URLs found on the page"
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                response = requests.post(self.firecrawl_scrape_url, headers=headers, json=data)
+                
+                if response.status_code == 200:
+                    json_data = response.json()
+                    
+                    # Try different ways to extract images
+                    if 'extract' in json_data and 'images' in json_data['extract']:
+                        all_images.extend(json_data['extract']['images'])
+                    elif 'images' in json_data:
+                        all_images.extend(json_data['images'])
+                    
+                    # If we got some images, break early
+                    if len(all_images) >= 3:
+                        break
+                        
+            except Exception as e:
+                st.error(f"Error scraping {source_url}: {str(e)}")
+                continue
+        
+        return all_images[:3]  # Return top 3 images
+
+    async def search_images(self, query: str, max_images: int = 3) -> List[Dict]:
+        """Search for images related to the query using Firecrawl API"""
+        try:
+            # Extract meaningful keywords from the query for image search
+            search_keywords = self.extract_search_keywords(query)
+            st.info(f"🔍 Searching for images with keywords: '{search_keywords}' (from prompt: '{query}')")
             
-            # Parse the HTML
-            soup = BeautifulSoup(response.text, 'html.parser')
+            # First try the simple scrape approach
+            image_urls = self.get_images_simple_scrape(search_keywords)
             
-            # Find all image elements
-            img_elements = soup.find_all('img')
-            st.info(f"Found {len(img_elements)} potential images")
+            # If that doesn't work, try alternative sources
+            if not image_urls:
+                st.info("Trying alternative sources...")
+                image_urls = self.get_images_from_alternative_sources(search_keywords)
             
             # Process and validate images
             valid_images = []
-            for idx, img in enumerate(img_elements):
-                if len(valid_images) >= max_images:
-                    break
-                
+            for idx, img_url in enumerate(image_urls[:max_images]):
                 try:
-                    # Try different attributes for image URL
-                    img_url = img.get('src') or img.get('data-src')
-                    if not img_url or not img_url.startswith('http'):
-                        continue
-                    
                     st.info(f"Processing image {idx + 1}: {img_url}")
                     
                     # Download and validate image
-                    img_response = requests.get(img_url, headers=headers, timeout=5)
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                    
+                    img_response = requests.get(img_url, headers=headers, timeout=10)
                     if img_response.status_code == 200:
-                        img = Image.open(BytesIO(img_response.content))
-                        # Convert to RGB if needed
-                        if img.mode in ('RGBA', 'P'):
-                            img = img.convert('RGB')
-                        # Resize if too large
-                        if max(img.size) > 800:
-                            img.thumbnail((800, 800))
-                        # Convert to bytes
-                        img_byte_arr = BytesIO()
-                        img.save(img_byte_arr, format='JPEG')
-                        img_byte_arr = img_byte_arr.getvalue()
-                        
-                        valid_images.append({
-                            'url': img_url,
-                            'title': f"Image related to: {query}",
-                            'image_data': img_byte_arr
-                        })
-                        st.success(f"Successfully processed image {idx + 1}")
+                        try:
+                            img = Image.open(BytesIO(img_response.content))
+                            # Convert to RGB if needed
+                            if img.mode in ('RGBA', 'P'):
+                                img = img.convert('RGB')
+                            # Resize if too large
+                            if max(img.size) > 800:
+                                img.thumbnail((800, 800))
+                            # Convert to bytes
+                            img_byte_arr = BytesIO()
+                            img.save(img_byte_arr, format='JPEG')
+                            img_byte_arr = img_byte_arr.getvalue()
+                            
+                            valid_images.append({
+                                'url': img_url,
+                                'title': f"Image related to: {search_keywords}",
+                                'image_data': img_byte_arr
+                            })
+                            st.success(f"Successfully processed image {idx + 1}")
+                        except Exception as img_error:
+                            st.warning(f"Failed to process image {idx + 1}: {str(img_error)}")
                     else:
                         st.warning(f"Failed to download image {idx + 1}: HTTP {img_response.status_code}")
                 except Exception as e:
@@ -331,7 +478,7 @@ class OpenRouterClient:
                 content = text_response["choices"][0]["message"]["content"].strip()
                 text_content = content if content else "Sorry, I couldn't generate a response. Please try rephrasing your question."
                 
-                # Get images asynchronously
+                # Get images asynchronously using the original prompt
                 images = await self.image_scraper.search_images(prompt)
                 st.info(f"Found {len(images)} images for prompt: {prompt}")
                 
