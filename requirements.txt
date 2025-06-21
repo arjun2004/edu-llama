@@ -7,3 +7,7 @@ pyaudio
 crawl4ai
 Pillow
 beautifulsoup4
+opencv-python
+numpy
+fer
+matplotlib
