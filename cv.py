@@ -12,6 +12,13 @@ import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+# Global emotion engagement state for app.py to access
+shared_engagement_state = {
+    'last_state': 'UNKNOWN',
+    'disengaged_duration': 0,
+    'disengaged_count': 0,
+    'last_timestamp': 0
+}
 class ImprovedEmotionDetector:
     def __init__(self):
         """Initialize the emotion detector with FER model"""
@@ -348,11 +355,22 @@ class ImprovedEmotionDetector:
         self.stop_camera()
     
     def send_to_orchestrator(self, status, emotion, score):
-        """Send engagement status to orchestrator"""
-        # Enhanced logging with more details
-        if hasattr(self, 'last_orchestrator_status') and self.last_orchestrator_status != status:
-            print(f"ENGAGEMENT CHANGE: {status} | Emotion: {emotion} | Score: {score:.2f}")
-        self.last_orchestrator_status = status
+        global shared_engagement_state
+        current_time = time.time()
+        
+        # Track disengagement duration and count
+        if status == "DISENGAGED":
+            if shared_engagement_state['last_state'] == "DISENGAGED":
+                shared_engagement_state['disengaged_duration'] += current_time - shared_engagement_state['last_timestamp']
+            else:
+                shared_engagement_state['disengaged_duration'] = 0
+                shared_engagement_state['disengaged_count'] += 1
+        else:
+            shared_engagement_state['disengaged_duration'] = 0
+
+        shared_engagement_state['last_state'] = status
+        shared_engagement_state['last_timestamp'] = current_time
+
 
 # Enhanced GUI class remains mostly the same but with updated detector
 class EnhancedEmotionGUI:
@@ -546,6 +564,7 @@ class EnhancedEmotionGUI:
         """Handle window closing"""
         self.stop_detection()
         self.root.destroy()
+    
 
 def main():
     """Enhanced main function with improved disengagement detection"""

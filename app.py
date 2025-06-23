@@ -19,6 +19,11 @@ from PIL import Image
 import asyncio
 import re
 from urllib.parse import quote, urljoin
+import threading
+import time
+from cv import ImprovedEmotionDetector, shared_engagement_state  # 👈 import detector and state
+
+
 
 class ImageScraper:
     def __init__(self):
@@ -677,9 +682,31 @@ class OpenRouterClient:
         
         # Prepare summary prompt
         if custom_prompt:
-            prompt = f"{custom_prompt}\n\nPDF Content:\n{self.pdf_content}"
+            if detect_disengagement():
+                adaptation_instruction = (
+                    "The student appears disengaged. Please adapt your explanation by simplifying the language, "
+                    "adding visual examples, and suggesting interactive or audio aids.\n\n"
+    )
+                prompt = adaptation_instruction + prompt
+                if detect_disengagement() and st.session_state.last_notified_state != 'DISENGAGED':
+                    st.toast("⚠️ Student appears disengaged. Adapting teaching strategy...", icon="⚠️")
+                    st.session_state.last_notified_state = 'DISENGAGED'
+                elif not detect_disengagement():
+                    st.session_state.last_notified_state = 'ENGAGED'
+
+                
         else:
-            prompt = f"Please provide a comprehensive summary of the following PDF content. Include the main topics, key points, and important details:\n\n{self.pdf_content}"
+            if detect_disengagement():
+                adaptation_instruction = (
+                    "The student appears disengaged. Please adapt your explanation by simplifying the language, "
+                    "adding visual examples, and suggesting interactive or audio aids.\n\n"
+    )
+                prompt = adaptation_instruction + prompt
+                if detect_disengagement() and st.session_state.last_notified_state != 'DISENGAGED':
+                    st.toast("⚠️ Student appears disengaged. Adapting teaching strategy...", icon="⚠️")
+                    st.session_state.last_notified_state = 'DISENGAGED'
+                elif not detect_disengagement():
+                    st.session_state.last_notified_state = 'ENGAGED'
         
         # Handle long content by truncating if necessary
         max_content_length = 12000
@@ -720,6 +747,15 @@ def create_audio_download_link(audio_bytes, filename="response.wav"):
         href = f'<a href="data:audio/wav;base64,{b64}" download="{filename}">📥 Download Audio</a>'
         return href
     return ""
+def detect_disengagement():
+    """Check if the student is disengaged based on real-time emotion data"""
+    limit_duration = shared_engagement_state.get('disengaged_duration_limit', 10)
+    limit_count = shared_engagement_state.get('disengaged_count_limit', 3)
+    return (
+        shared_engagement_state.get('disengaged_duration', 0) > limit_duration or
+        shared_engagement_state.get('disengaged_count', 0) >= limit_count
+    )
+
 
 def display_message(message: Dict):
     """Display a message in the chat interface"""
@@ -769,6 +805,17 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    # Start Emotion Detector Thread if not running
+    if 'emotion_thread' not in st.session_state:
+        def start_emotion_monitor():
+            detector = ImprovedEmotionDetector()
+            if detector.start_camera():
+                detector.run_detection()  # runs in loop
+
+        st.session_state.emotion_thread = threading.Thread(target=start_emotion_monitor, daemon=True)
+        st.session_state.emotion_thread.start()
+        st.info("🎥 Real-time emotion tracking initialized.")
+
     
     # Custom CSS for ChatGPT-like styling
     st.markdown("""
