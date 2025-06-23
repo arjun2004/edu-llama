@@ -17,7 +17,13 @@ shared_engagement_state = {
     'last_state': 'UNKNOWN',
     'disengaged_duration': 0,
     'disengaged_count': 0,
-    'last_timestamp': 0
+    'last_timestamp': 0,
+    'disengaged_duration_limit': 10,  # seconds before considering disengaged
+    'disengaged_count_limit': 3,      # number of disengagement events before alert
+    'current_emotion': 'UNKNOWN',
+    'engagement_score': 0.0,
+    'face_detected': False,
+    'last_face_detection_time': 0
 }
 class ImprovedEmotionDetector:
     def __init__(self):
@@ -368,8 +374,13 @@ class ImprovedEmotionDetector:
         else:
             shared_engagement_state['disengaged_duration'] = 0
 
+        # Update shared state with current information
         shared_engagement_state['last_state'] = status
         shared_engagement_state['last_timestamp'] = current_time
+        shared_engagement_state['current_emotion'] = emotion
+        shared_engagement_state['engagement_score'] = score
+        shared_engagement_state['face_detected'] = emotion != "No Face Detected"
+        shared_engagement_state['last_face_detection_time'] = current_time if emotion != "No Face Detected" else shared_engagement_state['last_face_detection_time']
 
 
 # Enhanced GUI class remains mostly the same but with updated detector

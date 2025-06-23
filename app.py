@@ -23,7 +23,26 @@ import threading
 import time
 from cv import ImprovedEmotionDetector, shared_engagement_state  # 👈 import detector and state
 
-
+def check_disengagement_and_notify():
+    """Check for disengagement and show Streamlit notification if needed"""
+    try:
+        if detect_disengagement():
+            disengaged_duration = shared_engagement_state.get('disengaged_duration', 0)
+            disengaged_count = shared_engagement_state.get('disengaged_count', 0)
+            if disengaged_duration > 15:
+                message = f"Student has been disengaged for {disengaged_duration:.1f} seconds!"
+            elif disengaged_count >= 3:
+                message = f"Student has shown disengagement {disengaged_count} times!"
+            else:
+                message = "Student appears disengaged!"
+            notification_enabled = st.session_state.get('notification_enabled', True)
+            if notification_enabled:
+                st.toast(f"⚠️ {message}\nConsider: Simplifying explanations, adding visual aids, taking a break, or checking if the student needs help.", icon="⚠️")
+            return True
+        return False
+    except Exception as e:
+        st.warning(f"Error checking disengagement: {e}")
+        return False
 
 class ImageScraper:
     def __init__(self):
@@ -805,6 +824,13 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # Initialize disengagement tracking
+    if 'last_disengagement_check' not in st.session_state:
+        st.session_state.last_disengagement_check = 0
+    if 'disengagement_notified' not in st.session_state:
+        st.session_state.disengagement_notified = False
+    
     # Start Emotion Detector Thread if not running
     if 'emotion_thread' not in st.session_state:
         def start_emotion_monitor():
@@ -815,8 +841,20 @@ def main():
         st.session_state.emotion_thread = threading.Thread(target=start_emotion_monitor, daemon=True)
         st.session_state.emotion_thread.start()
         st.info("🎥 Real-time emotion tracking initialized.")
-
     
+    # Periodic disengagement check
+    current_time = time.time()
+    if current_time - st.session_state.last_disengagement_check > 2:  # Check every 2 seconds
+        st.session_state.last_disengagement_check = current_time
+        
+        # Check for disengagement and show notification
+        if check_disengagement_and_notify():
+            if not st.session_state.disengagement_notified:
+                st.session_state.disengagement_notified = True
+                st.toast("⚠️ Disengagement detected! Adapting teaching strategy...", icon="⚠️")
+        else:
+            st.session_state.disengagement_notified = False
+
     # Custom CSS for ChatGPT-like styling
     st.markdown("""
     <style>
@@ -968,6 +1006,51 @@ def main():
                     st.rerun()
         else:
             auto_speak = False
+        
+        st.markdown("---")
+        
+        # Engagement Monitoring
+        st.subheader("📊 Engagement Monitoring")
+        
+        # Real-time engagement status
+        engagement_state = shared_engagement_state.get('last_state', 'UNKNOWN')
+        disengaged_duration = shared_engagement_state.get('disengaged_duration', 0)
+        disengaged_count = shared_engagement_state.get('disengaged_count', 0)
+        
+        # Engagement status indicator
+        if engagement_state == "ENGAGED":
+            st.success("🟢 Student Engaged")
+        elif engagement_state == "DISENGAGED":
+            st.error("🔴 Student Disengaged")
+        else:
+            st.warning("🟡 Student Neutral")
+        
+        # Engagement metrics
+        st.markdown(f"**Disengaged Duration:** {disengaged_duration:.1f}s")
+        st.markdown(f"**Disengagement Count:** {disengaged_count}")
+        
+        # Additional engagement information
+        current_emotion = shared_engagement_state.get('current_emotion', 'UNKNOWN')
+        engagement_score = shared_engagement_state.get('engagement_score', 0.0)
+        face_detected = shared_engagement_state.get('face_detected', False)
+        
+        st.markdown(f"**Current Emotion:** {current_emotion}")
+        st.markdown(f"**Engagement Score:** {engagement_score:.2f}")
+        st.markdown(f"**Face Detected:** {'✅' if face_detected else '❌'}")
+        
+        # Engagement score progress bar
+        st.progress(engagement_score)
+        
+        # Disengagement notification settings
+        notification_enabled = st.checkbox("Enable Disengagement Alerts", value=True, key="notification_enabled")
+        if notification_enabled:
+            st.info("🔔 Pop-up notifications will appear when disengagement is detected")
+            
+            # Test notification button
+            if st.button("🧪 Test Disengagement Alert", type="secondary"):
+                st.toast("This is a test notification for disengagement detection!", icon="⚠️")
+        else:
+            st.warning("🔕 Disengagement alerts are disabled")
         
         st.markdown("---")
         
@@ -1175,7 +1258,7 @@ def main():
         """)
     
     # Status bar at bottom
-    status_col1, status_col2, status_col3 = st.columns([1, 1, 1])
+    status_col1, status_col2, status_col3, status_col4 = st.columns([1, 1, 1, 1])
     
     with status_col1:
         if api_key:
@@ -1197,6 +1280,20 @@ def main():
                 st.markdown("🎤 **Voice Partial**")
         else:
             st.markdown("🎤 **Voice Disabled**")
+    
+    with status_col4:
+        # Real-time engagement status
+        engagement_state = shared_engagement_state.get('last_state', 'UNKNOWN')
+        if engagement_state == "ENGAGED":
+            st.markdown("🟢 **Student Engaged**")
+        elif engagement_state == "DISENGAGED":
+            st.markdown("🔴 **Student Disengaged**")
+        else:
+            st.markdown("🟡 **Student Neutral**")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # Cleanup notification system
+        pass
