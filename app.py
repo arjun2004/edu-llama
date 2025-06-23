@@ -670,10 +670,10 @@ class OpenRouterClient:
         
         return f"PDF '{filename}' loaded successfully. Content length: {len(self.pdf_content)} characters"
     
-    def summarize_pdf(self, custom_prompt: str = None) -> str:
+    async def summarize_pdf(self, custom_prompt: str = None) -> Dict:
         """Generate a summary of the loaded PDF"""
         if not self.pdf_content:
-            return "Error: No PDF content loaded. Please upload a PDF first."
+            return {"text": "Error: No PDF content loaded. Please upload a PDF first.", "images": []}
         
         # Prepare summary prompt
         if custom_prompt:
@@ -690,12 +690,12 @@ class OpenRouterClient:
             else:
                 prompt = f"Please provide a comprehensive summary of the following PDF content (truncated due to length). Include the main topics, key points, and important details:\n\n{truncated_content}\n\n[Note: Content was truncated due to length limits]"
         
-        return self.simple_prompt(prompt)
+        return await self.simple_prompt(prompt)
     
-    def ask_pdf_question(self, question: str) -> str:
+    async def ask_pdf_question(self, question: str) -> Dict:
         """Ask a question about the loaded PDF content"""
         if not self.pdf_content:
-            return "Error: No PDF content loaded. Please upload a PDF first."
+            return {"text": "Error: No PDF content loaded. Please upload a PDF first.", "images": []}
         
         # Prepare question prompt
         prompt = f"Based on the following PDF content, please answer this question: {question}\n\nPDF Content:\n{self.pdf_content}\n\nIf the answer is not found in the PDF content, please say so clearly."
@@ -706,7 +706,7 @@ class OpenRouterClient:
             truncated_content = self.pdf_content[:max_content_length-500]
             prompt = f"Based on the following PDF content (truncated), please answer this question: {question}\n\nPDF Content:\n{truncated_content}\n\n[Note: Content was truncated due to length limits]\n\nIf the answer is not found in the available PDF content, please say so clearly."
         
-        return self.simple_prompt(prompt)
+        return await self.simple_prompt(prompt)
     
     def clear_pdf_content(self):
         """Clear the stored PDF content"""
@@ -974,7 +974,7 @@ def main():
             if st.button("📋 Summarize PDF"):
                 if st.session_state.client:
                     with st.spinner("Generating summary..."):
-                        summary = st.session_state.client.summarize_pdf()
+                        summary = asyncio.run(st.session_state.client.summarize_pdf())
                         st.session_state.chat_history.append({
                             "role": "user",
                             "content": "Please summarize the uploaded PDF",
@@ -1079,7 +1079,7 @@ def main():
         with st.spinner("🤖 AI is thinking..."):
             try:
                 if st.session_state.pdf_loaded:
-                    response = st.session_state.client.ask_pdf_question(user_input)
+                    response = asyncio.run(st.session_state.client.ask_pdf_question(user_input))
                 else:
                     # Run async operation
                     response = asyncio.run(st.session_state.client.simple_prompt(user_input))
