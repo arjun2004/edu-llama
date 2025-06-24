@@ -1,10 +1,7 @@
 import streamlit as st
 import random
-import json
-import requests
 from dataclasses import dataclass
 from typing import List, Dict, Any
-import time
 
 # Page configuration
 st.set_page_config(
@@ -22,121 +19,6 @@ class Question:
     options: List[str]  # For multiple choice, ['True', 'False'] for true/false
     correct_answer: str
     explanation: str = ""
-
-class OpenRouterClient:
-    """Client for OpenRouter API to generate quiz questions"""
-    
-    def __init__(self, api_key: str, model: str = "anthropic/claude-3.5-sonnet"):
-        self.api_key = api_key
-        self.model = model
-        self.base_url = "https://openrouter.ai/api/v1/chat/completions"
-    
-    def generate_questions(self, category: str, difficulty: str, num_questions: int = 10) -> List[Question]:
-        """Generate quiz questions using OpenRouter API"""
-        
-        prompt = f"""Generate exactly {num_questions} quiz questions about {category} at {difficulty} difficulty level.
-
-Please create a mix of multiple choice (with 4 options) and true/false questions.
-
-For each question, provide:
-1. The question text
-2. Question type ('multiple_choice' or 'true_false')
-3. Options (4 choices for multiple choice, ['True', 'False'] for true/false)
-4. The correct answer (must match exactly one of the options)
-5. A brief explanation of why the answer is correct
-
-Return the questions in this exact JSON format:
-{{
-  "questions": [
-    {{
-      "question_text": "Your question here?",
-      "question_type": "multiple_choice",
-      "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correct_answer": "Option A",
-      "explanation": "Brief explanation here."
-    }},
-    {{
-      "question_text": "Your true/false question here.",
-      "question_type": "true_false",
-      "options": ["True", "False"],
-      "correct_answer": "True",
-      "explanation": "Brief explanation here."
-    }}
-  ]
-}}
-
-Make sure:
-- Questions are appropriate for {difficulty} difficulty
-- Mix of question types (roughly 60% multiple choice, 40% true/false)
-- Clear, unambiguous questions
-- Correct answers that exactly match one of the provided options
-- Educational explanations
-
-Category: {category}
-Difficulty: {difficulty}
-Number of questions: {num_questions}"""
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        data = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": 0.7,
-            "max_tokens": 4000
-        }
-        
-        try:
-            response = requests.post(self.base_url, headers=headers, json=data, timeout=30)
-            response.raise_for_status()
-            
-            result = response.json()
-            content = result['choices'][0]['message']['content']
-            
-            # Parse the JSON response
-            questions_data = json.loads(content)
-            questions = []
-            
-            for q_data in questions_data['questions']:
-                question = Question(
-                    question_text=q_data['question_text'],
-                    question_type=q_data['question_type'],
-                    options=q_data['options'],
-                    correct_answer=q_data['correct_answer'],
-                    explanation=q_data.get('explanation', '')
-                )
-                questions.append(question)
-            
-            return questions
-            
-        except requests.exceptions.RequestException as e:
-            st.error(f"API request failed: {str(e)}")
-            return self._get_fallback_questions(category, difficulty)
-        except json.JSONDecodeError as e:
-            st.error(f"Failed to parse API response: {str(e)}")
-            return self._get_fallback_questions(category, difficulty)
-        except Exception as e:
-            st.error(f"Unexpected error: {str(e)}")
-            return self._get_fallback_questions(category, difficulty)
-    
-    def _get_fallback_questions(self, category: str, difficulty: str) -> List[Question]:
-        """Fallback questions if API fails"""
-        return [
-            Question(
-                "This is a fallback question. Please check your API configuration.",
-                "true_false",
-                ["True", "False"],
-                "True",
-                "This appears when the API is not properly configured."
-            )
-        ]
 
 class QuizManager:
     """Manages quiz state and operations"""
@@ -164,10 +46,161 @@ class QuizManager:
             st.session_state.selected_category = None
         if 'selected_difficulty' not in st.session_state:
             st.session_state.selected_difficulty = None
-        if 'api_key' not in st.session_state:
-            st.session_state.api_key = ""
-        if 'api_configured' not in st.session_state:
-            st.session_state.api_configured = False
+    
+    def get_question_bank(self) -> Dict[str, Dict[str, List[Question]]]:
+        """
+        Question bank organized by category and difficulty
+        In a real app, this could be loaded from a database or generated by LLM
+        """
+        return {
+            "Programming": {
+                "Easy": [
+                    Question("Python is a compiled language.", "true_false", ["True", "False"], "False", "Python is an interpreted language, not compiled."),
+                    Question("Which symbol is used for comments in Python?", "multiple_choice", ["//", "#", "/*", "<!--"], "#", "# is used for single-line comments in Python."),
+                    Question("HTML stands for HyperText Markup Language.", "true_false", ["True", "False"], "True", "HTML indeed stands for HyperText Markup Language."),
+                    Question("Which of these is a Python web framework?", "multiple_choice", ["Django", "React", "Angular", "Vue"], "Django", "Django is a high-level Python web framework."),
+                    Question("CSS is used for styling web pages.", "true_false", ["True", "False"], "True", "CSS (Cascading Style Sheets) is used to style HTML elements."),
+                ],
+                "Medium": [
+                    Question("What does API stand for?", "multiple_choice", ["Application Programming Interface", "Advanced Programming Interface", "Automated Programming Interface", "Application Process Interface"], "Application Programming Interface", "API stands for Application Programming Interface."),
+                    Question("JavaScript and Java are the same programming language.", "true_false", ["True", "False"], "False", "JavaScript and Java are completely different programming languages."),
+                    Question("Which of these is NOT a programming language?", "multiple_choice", ["Python", "HTML", "Java", "C++"], "HTML", "HTML is a markup language, not a programming language."),
+                    Question("Git is a version control system.", "true_false", ["True", "False"], "True", "Git is a distributed version control system for tracking changes in source code."),
+                    Question("What is the time complexity of binary search?", "multiple_choice", ["O(n)", "O(log n)", "O(n²)", "O(1)"], "O(log n)", "Binary search has O(log n) time complexity as it halves the search space in each iteration."),
+                ],
+                "Hard": [
+                    Question("What design pattern ensures a class has only one instance?", "multiple_choice", ["Factory", "Observer", "Singleton", "Strategy"], "Singleton", "The Singleton pattern ensures a class has only one instance and provides global access to it."),
+                    Question("In Python, everything is an object.", "true_false", ["True", "False"], "True", "In Python, everything including numbers, strings, functions, and classes are objects."),
+                    Question("Which sorting algorithm has the best average time complexity?", "multiple_choice", ["Bubble Sort", "Quick Sort", "Merge Sort", "Selection Sort"], "Merge Sort", "Merge Sort has consistent O(n log n) time complexity in all cases."),
+                    Question("Functional programming languages are stateless.", "true_false", ["True", "False"], "True", "Pure functional programming languages avoid changing state and mutable data."),
+                    Question("What does SOLID stand for in programming principles?", "multiple_choice", ["Simple Object Linear Design", "Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion", "Structured Object Logic Design", "System Object Layer Design"], "Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion", "SOLID is an acronym for five design principles intended to make software designs more understandable, flexible, and maintainable."),
+                ]
+            },
+            "Web Development": {
+                "Easy": [
+                    Question("What does CSS stand for?", "multiple_choice", ["Computer Style Sheets", "Cascading Style Sheets", "Creative Style Sheets", "Colorful Style Sheets"], "Cascading Style Sheets", "CSS stands for Cascading Style Sheets."),
+                    Question("HTML is a programming language.", "true_false", ["True", "False"], "False", "HTML is a markup language, not a programming language."),
+                    Question("Which HTML tag is used for the largest heading?", "multiple_choice", ["<h6>", "<h1>", "<header>", "<title>"], "<h1>", "<h1> represents the largest/most important heading."),
+                    Question("CSS can be written inline in HTML elements.", "true_false", ["True", "False"], "True", "CSS can be written inline using the style attribute."),
+                    Question("Which protocol is used for web communication?", "multiple_choice", ["FTP", "HTTP", "SMTP", "SSH"], "HTTP", "HTTP (HyperText Transfer Protocol) is the foundation of web communication."),
+                ],
+                "Medium": [
+                    Question("What is the box model in CSS?", "multiple_choice", ["Content, Padding, Border, Margin", "Header, Body, Footer", "HTML, CSS, JavaScript", "Width, Height, Color"], "Content, Padding, Border, Margin", "The CSS box model consists of content, padding, border, and margin."),
+                    Question("JSON stands for JavaScript Object Notation.", "true_false", ["True", "False"], "True", "JSON indeed stands for JavaScript Object Notation."),
+                    Question("Which HTTP method is used to update data?", "multiple_choice", ["GET", "POST", "PUT", "DELETE"], "PUT", "PUT is typically used for updating existing resources."),
+                    Question("CSS Grid is newer than Flexbox.", "true_false", ["True", "False"], "True", "CSS Grid was introduced after Flexbox and provides more advanced layout capabilities."),
+                    Question("What does DOM stand for?", "multiple_choice", ["Document Object Model", "Data Object Management", "Dynamic Object Method", "Document Oriented Markup"], "Document Object Model", "DOM stands for Document Object Model."),
+                ],
+                "Hard": [
+                    Question("What is the difference between '==' and '===' in JavaScript?", "multiple_choice", ["No difference", "=== checks type and value, == only checks value", "== is faster than ===", "=== is deprecated"], "=== checks type and value, == only checks value", "=== performs strict equality checking both type and value, while == performs type coercion."),
+                    Question("Service Workers can work offline.", "true_false", ["True", "False"], "True", "Service Workers enable offline functionality by intercepting network requests."),
+                    Question("Which pattern is commonly used in React for state management?", "multiple_choice", ["MVC", "Observer", "Flux/Redux", "Singleton"], "Flux/Redux", "Flux architecture and Redux are popular state management patterns in React."),
+                    Question("WebAssembly runs at near-native speed.", "true_false", ["True", "False"], "True", "WebAssembly is designed to run at near-native speed by taking advantage of common hardware capabilities."),
+                    Question("What is the purpose of a CDN?", "multiple_choice", ["Content Delivery Network for faster content delivery", "Central Data Network for data storage", "Code Development Network for collaboration", "Client Download Network for software"], "Content Delivery Network for faster content delivery", "CDN distributes content across multiple servers globally to reduce latency."),
+                ]
+            },
+            "Data Science": {
+                "Easy": [
+                    Question("What does SQL stand for?", "multiple_choice", ["Structured Query Language", "Simple Query Language", "Standard Query Language", "System Query Language"], "Structured Query Language", "SQL stands for Structured Query Language."),
+                    Question("Python is commonly used in data science.", "true_false", ["True", "False"], "True", "Python is one of the most popular programming languages for data science."),
+                    Question("Which of these is a data visualization library in Python?", "multiple_choice", ["NumPy", "Matplotlib", "Pandas", "Scikit-learn"], "Matplotlib", "Matplotlib is a comprehensive library for creating static, animated, and interactive visualizations."),
+                    Question("Big Data refers to datasets that are too large to process with traditional methods.", "true_false", ["True", "False"], "True", "Big Data is characterized by volume, velocity, and variety that exceed traditional processing capabilities."),
+                    Question("What does CSV stand for?", "multiple_choice", ["Comma Separated Values", "Computer System Values", "Central System Variables", "Common Standard Values"], "Comma Separated Values", "CSV stands for Comma Separated Values."),
+                ],
+                "Medium": [
+                    Question("What is the main purpose of NumPy?", "multiple_choice", ["Web development", "Numerical computing", "Database management", "Image processing"], "Numerical computing", "NumPy provides support for large, multi-dimensional arrays and matrices."),
+                    Question("Machine learning is a subset of artificial intelligence.", "true_false", ["True", "False"], "True", "Machine learning is indeed a subset of AI focused on algorithms that learn from data."),
+                    Question("Which algorithm is commonly used for classification?", "multiple_choice", ["Linear Regression", "Decision Tree", "K-means", "PCA"], "Decision Tree", "Decision Trees are commonly used for both classification and regression tasks."),
+                    Question("Pandas is built on top of NumPy.", "true_false", ["True", "False"], "True", "Pandas is built on top of NumPy and provides data structures and operations for manipulating numerical tables."),
+                    Question("What does ETL stand for in data processing?", "multiple_choice", ["Extract, Transform, Load", "Evaluate, Test, Launch", "Export, Transfer, Link", "Execute, Track, Log"], "Extract, Transform, Load", "ETL is a process that extracts data from sources, transforms it, and loads it into a destination."),
+                ],
+                "Hard": [
+                    Question("What is the curse of dimensionality?", "multiple_choice", ["Too many features making algorithms inefficient", "Not enough data points", "Overfitting in models", "Memory limitations"], "Too many features making algorithms inefficient", "The curse of dimensionality refers to problems that arise when analyzing data in high-dimensional spaces."),
+                    Question("Cross-validation helps prevent overfitting.", "true_false", ["True", "False"], "True", "Cross-validation is a technique used to assess how well a model will generalize to independent data."),
+                    Question("Which technique is used for dimensionality reduction?", "multiple_choice", ["K-means", "PCA", "Random Forest", "SVM"], "PCA", "Principal Component Analysis (PCA) is a technique used to reduce the dimensionality of data."),
+                    Question("Gradient descent always finds the global minimum.", "true_false", ["True", "False"], "False", "Gradient descent can get stuck in local minima and doesn't guarantee finding the global minimum."),
+                    Question("What is the purpose of regularization in machine learning?", "multiple_choice", ["Increase model complexity", "Prevent overfitting", "Speed up training", "Improve accuracy"], "Prevent overfitting", "Regularization techniques add penalties to prevent the model from becoming too complex and overfitting."),
+                ]
+            },
+            "General Knowledge": {
+                "Easy": [
+                    Question("What is the capital of France?", "multiple_choice", ["London", "Berlin", "Paris", "Madrid"], "Paris", "Paris is the capital and largest city of France."),
+                    Question("The Earth revolves around the Sun.", "true_false", ["True", "False"], "True", "The Earth orbits around the Sun, completing one revolution in approximately 365.25 days."),
+                    Question("How many continents are there?", "multiple_choice", ["5", "6", "7", "8"], "7", "There are seven continents: Asia, Africa, North America, South America, Antarctica, Europe, and Australia."),
+                    Question("Water boils at 100°C at sea level.", "true_false", ["True", "False"], "True", "Water boils at 100°C (212°F) at standard atmospheric pressure."),
+                    Question("Which planet is known as the Red Planet?", "multiple_choice", ["Venus", "Mars", "Jupiter", "Saturn"], "Mars", "Mars is called the Red Planet due to iron oxide (rust) on its surface."),
+                ],
+                "Medium": [
+                    Question("What is the longest river in the world?", "multiple_choice", ["Amazon", "Nile", "Mississippi", "Yangtze"], "Nile", "The Nile River is generally considered the longest river in the world at about 6,650 km."),
+                    Question("The Great Wall of China is visible from space.", "true_false", ["True", "False"], "False", "This is a common myth. The Great Wall is not visible from space with the naked eye."),
+                    Question("Which element has the chemical symbol 'Au'?", "multiple_choice", ["Silver", "Gold", "Aluminum", "Argon"], "Gold", "Au comes from the Latin word 'aurum' meaning gold."),
+                    Question("Lightning is hotter than the surface of the Sun.", "true_false", ["True", "False"], "True", "Lightning can reach temperatures of about 30,000 K, while the Sun's surface is about 5,800 K."),
+                    Question("What is the smallest country in the world?", "multiple_choice", ["Monaco", "Vatican City", "San Marino", "Liechtenstein"], "Vatican City", "Vatican City is the smallest sovereign state in the world by both area and population."),
+                ],
+                "Hard": [
+                    Question("What is the deepest point in Earth's oceans?", "multiple_choice", ["Mariana Trench", "Puerto Rico Trench", "Java Trench", "Philippine Trench"], "Mariana Trench", "The Challenger Deep in the Mariana Trench is the deepest known point in Earth's seabed."),
+                    Question("Bananas are berries, but strawberries are not.", "true_false", ["True", "False"], "True", "Botanically, bananas are berries while strawberries are aggregate accessory fruits."),
+                    Question("Which country has the most time zones?", "multiple_choice", ["Russia", "United States", "China", "France"], "France", "France has 12 time zones due to its overseas territories, more than any other country."),
+                    Question("Octopuses have three hearts.", "true_false", ["True", "False"], "True", "Octopuses have three hearts: two pump blood to their gills, and one pumps blood to the rest of their body."),
+                    Question("What is the hardest natural substance on Earth?", "multiple_choice", ["Quartz", "Diamond", "Titanium", "Graphite"], "Diamond", "Diamond is the hardest known natural material, rating 10 on the Mohs scale."),
+                ]
+            },
+            "Technology": {
+                "Easy": [
+                    Question("What does WWW stand for?", "multiple_choice", ["World Wide Web", "World Wide Welcome", "Web Wide World", "Wide World Web"], "World Wide Web", "WWW stands for World Wide Web."),
+                    Question("A smartphone is a type of computer.", "true_false", ["True", "False"], "True", "Smartphones are indeed computers with processors, memory, and operating systems."),
+                    Question("Which company created the iPhone?", "multiple_choice", ["Google", "Apple", "Microsoft", "Samsung"], "Apple", "Apple Inc. created and manufactures the iPhone."),
+                    Question("WiFi requires physical cables to connect to the internet.", "true_false", ["True", "False"], "False", "WiFi is a wireless networking technology that doesn't require physical cables for device connectivity."),
+                    Question("What does USB stand for?", "multiple_choice", ["Universal Serial Bus", "United System Bus", "Universal System Bridge", "United Serial Bridge"], "Universal Serial Bus", "USB stands for Universal Serial Bus."),
+                ],
+                "Medium": [
+                    Question("What is cloud computing?", "multiple_choice", ["Weather prediction", "Storing and accessing data over the internet", "A type of computer", "Wireless technology"], "Storing and accessing data over the internet", "Cloud computing involves delivering computing services over the internet."),
+                    Question("Artificial Intelligence can learn without human intervention.", "true_false", ["True", "False"], "True", "Machine learning, a subset of AI, allows systems to automatically learn and improve from experience."),
+                    Question("Which technology is used in contactless payments?", "multiple_choice", ["Bluetooth", "NFC", "WiFi", "GPS"], "NFC", "Near Field Communication (NFC) is used for contactless payments and data exchange."),
+                    Question("5G is faster than 4G.", "true_false", ["True", "False"], "True", "5G technology offers significantly faster data speeds than 4G."),
+                    Question("What does IoT stand for?", "multiple_choice", ["Internet of Things", "Internal Operating Technology", "Integrated Online Technology", "Internet Operating Tools"], "Internet of Things", "IoT stands for Internet of Things, referring to interconnected devices."),
+                ],
+                "Hard": [
+                    Question("What is quantum computing based on?", "multiple_choice", ["Binary code", "Quantum mechanics", "Artificial intelligence", "Cloud storage"], "Quantum mechanics", "Quantum computing leverages quantum mechanical phenomena like superposition and entanglement."),
+                    Question("Blockchain technology is only used for cryptocurrency.", "true_false", ["True", "False"], "False", "Blockchain has applications beyond cryptocurrency, including supply chain, healthcare, and voting systems."),
+                    Question("Which technology enables virtual reality?", "multiple_choice", ["GPS tracking", "Motion sensors and displays", "Radio waves", "Magnetic fields"], "Motion sensors and displays", "VR uses motion sensors, displays, and processing power to create immersive experiences."),
+                    Question("Edge computing processes data closer to where it's generated.", "true_false", ["True", "False"], "True", "Edge computing brings computation and data storage closer to data sources to reduce latency."),
+                    Question("What is the main advantage of quantum cryptography?", "multiple_choice", ["Faster encryption", "Unbreakable security", "Lower cost", "Smaller file sizes"], "Unbreakable security", "Quantum cryptography offers theoretically unbreakable security based on quantum mechanics principles."),
+                ]
+            }
+        }
+    
+    def generate_questions(self, category: str, difficulty: str) -> List[Question]:
+        """Generate quiz questions based on category and difficulty"""
+        question_bank = self.get_question_bank()
+        
+        if category in question_bank and difficulty in question_bank[category]:
+            questions = question_bank[category][difficulty].copy()
+            
+            # If we have more than 10 questions, randomly select 10
+            if len(questions) > 10:
+                questions = random.sample(questions, 10)
+            # If we have fewer than 10, add questions from other difficulties
+            elif len(questions) < 10:
+                all_questions = []
+                for diff in question_bank[category]:
+                    all_questions.extend(question_bank[category][diff])
+                
+                # Remove duplicates and shuffle
+                seen = set()
+                unique_questions = []
+                for q in all_questions:
+                    if q.question_text not in seen:
+                        unique_questions.append(q)
+                        seen.add(q.question_text)
+                
+                questions = random.sample(unique_questions, min(10, len(unique_questions)))
+            
+            random.shuffle(questions)
+            return questions
+        
+        # Fallback to general questions if category not found
+        return self.generate_questions("General Knowledge", "Easy")
     
     def reset_quiz(self):
         """Reset all quiz-related session state"""
@@ -179,79 +212,6 @@ class QuizManager:
         st.session_state.score = 0
         st.session_state.show_feedback = False
 
-def display_api_setup():
-    """Display API configuration screen"""
-    st.markdown("""
-    <div style='text-align: center; padding: 2rem 0;'>
-        <h1 style='color: #1f77b4; font-size: 3rem; margin-bottom: 0;'>🧠 Interactive Quiz</h1>
-        <p style='font-size: 1.2rem; color: #666; margin-top: 0;'>Powered by AI-Generated Questions</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    st.markdown("### 🔑 API Configuration")
-    st.markdown("""
-    This quiz uses OpenRouter API to generate dynamic questions. You'll need an API key to get started.
-    
-    **How to get your API key:**
-    1. Visit [OpenRouter.ai](https://openrouter.ai/)
-    2. Sign up for an account
-    3. Go to your dashboard and create an API key
-    4. Enter your API key below
-    """)
-    
-    # API key input
-    api_key = st.text_input(
-        "Enter your OpenRouter API Key:",
-        type="password",
-        placeholder="sk-or-...",
-        help="Your API key will be stored securely for this session only"
-    )
-    
-    # Model selection
-    model_options = [
-        "anthropic/claude-3.5-sonnet",
-        "anthropic/claude-3-haiku",
-        "openai/gpt-4o",
-        "openai/gpt-3.5-turbo",
-        "meta-llama/llama-3.1-70b-instruct",
-        "google/gemini-pro"
-    ]
-    
-    selected_model = st.selectbox(
-        "Select AI Model:",
-        model_options,
-        help="Different models may produce different question styles and quality"
-    )
-    
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🚀 Configure API", type="primary", use_container_width=True):
-            if api_key.strip():
-                st.session_state.api_key = api_key.strip()
-                st.session_state.selected_model = selected_model
-                st.session_state.api_configured = True
-                st.success("✅ API configured successfully!")
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error("❌ Please enter a valid API key")
-    
-    st.markdown("---")
-    
-    st.markdown("""
-    <div style='background-color: #f0f9ff; padding: 1.5rem; border-radius: 10px; border-left: 4px solid #0ea5e9;'>
-        <h4 style='margin-top: 0; color: #0c4a6e;'>🔒 Privacy & Security</h4>
-        <ul style='margin-bottom: 0;'>
-            <li>Your API key is only stored in your browser session</li>
-            <li>API key is never logged or permanently stored</li>
-            <li>All communication is encrypted (HTTPS)</li>
-            <li>Questions are generated fresh for each quiz</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-
 def display_start_screen():
     """Display the quiz start screen with category and difficulty selection"""
     
@@ -259,7 +219,7 @@ def display_start_screen():
     st.markdown("""
     <div style='text-align: center; padding: 2rem 0;'>
         <h1 style='color: #1f77b4; font-size: 3rem; margin-bottom: 0;'>🧠 Interactive Quiz</h1>
-        <p style='font-size: 1.2rem; color: #666; margin-top: 0;'>AI-Generated Questions Tailored for You!</p>
+        <p style='font-size: 1.2rem; color: #666; margin-top: 0;'>Test your knowledge across various topics!</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -268,11 +228,10 @@ def display_start_screen():
     # Instructions
     st.markdown("""
     ### 📋 How it works:
-    - **AI-Generated Questions** - Fresh questions created just for you
     - **10 questions** per quiz with mixed question types
     - **Immediate feedback** after each answer
     - **Progress tracking** throughout the quiz
-    - **Detailed explanations** for every answer
+    - **Detailed results** at the end with explanations
     """)
     
     st.markdown("---")
@@ -282,19 +241,9 @@ def display_start_screen():
     
     with col1:
         st.markdown("#### 📚 Select Category")
-        category_options = [
-            "Programming", "Web Development", "Data Science", "Machine Learning",
-            "Artificial Intelligence", "Cybersecurity", "Cloud Computing",
-            "Software Engineering", "Database Management", "DevOps",
-            "Mathematics", "Physics", "Chemistry", "Biology",
-            "History", "Geography", "Literature", "Philosophy",
-            "Business", "Economics", "Marketing", "Finance",
-            "Health & Medicine", "Psychology", "General Knowledge"
-        ]
-        
         category = st.selectbox(
             "Choose your topic:",
-            category_options,
+            ["Programming", "Web Development", "Data Science", "General Knowledge", "Technology"],
             key="category_select",
             help="Select the topic you want to be quizzed on"
         )
@@ -303,28 +252,18 @@ def display_start_screen():
         st.markdown("#### ⚡ Select Difficulty")
         difficulty = st.selectbox(
             "Choose difficulty level:",
-            ["Beginner", "Intermediate", "Advanced", "Expert"],
+            ["Easy", "Medium", "Hard"],
             key="difficulty_select",
             help="Select the difficulty level that matches your expertise"
         )
-    
-    # Custom topic option
-    st.markdown("---")
-    st.markdown("#### 🎯 Custom Topic (Optional)")
-    custom_topic = st.text_input(
-        "Or enter a specific topic:",
-        placeholder="e.g., React Hooks, Quantum Computing, Ancient Rome...",
-        help="Be specific for better questions!"
-    )
     
     st.markdown("---")
     
     # Start button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🚀 Generate Quiz", type="primary", use_container_width=True):
-            final_category = custom_topic.strip() if custom_topic.strip() else category
-            st.session_state.selected_category = final_category
+        if st.button("🚀 Start Quiz", type="primary", use_container_width=True):
+            st.session_state.selected_category = category
             st.session_state.selected_difficulty = difficulty
             st.session_state.quiz_started = True
             st.rerun()
@@ -333,7 +272,7 @@ def display_start_screen():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #888; font-size: 0.9rem;'>
-        💡 <b>Tip:</b> Questions are generated fresh each time using AI. Expect variety and creativity!
+        💡 <b>Tip:</b> Take your time to read each question carefully. You'll get immediate feedback and explanations!
     </div>
     """, unsafe_allow_html=True)
 
@@ -524,17 +463,6 @@ def main():
     # Initialize quiz manager
     quiz_manager = QuizManager()
     
-    # Check if API is configured
-    if not st.session_state.api_configured:
-        display_api_setup()
-        return
-    
-    # Initialize OpenRouter client
-    openrouter_client = OpenRouterClient(
-        st.session_state.api_key,
-        st.session_state.get('selected_model', 'anthropic/claude-3.5-sonnet')
-    )
-    
     # Main quiz logic
     if not st.session_state.quiz_started:
         # Show start screen
@@ -555,9 +483,8 @@ def main():
                 st.rerun()
         
         with col2:
-            if st.button("🎯 New Topic", use_container_width=True):
-                quiz_manager.reset_quiz()
-                st.rerun()
+            if st.button("📊 View Statistics", use_container_width=True):
+                st.info("Statistics feature coming soon!")
         
         with col3:
             if st.button("📤 Share Results", use_container_width=True):
@@ -567,7 +494,7 @@ def main():
                 category = st.session_state.selected_category
                 difficulty = st.session_state.selected_difficulty
                 
-                share_text = f"I just completed a {difficulty} {category} quiz and scored {score}/{total} ({percentage:.1f}%)! 🧠✨ #AIQuiz"
+                share_text = f"I just completed a {difficulty} {category} quiz and scored {score}/{total} ({percentage:.1f}%)! 🧠✨"
                 st.success(f"Share this: {share_text}")
     
     else:
@@ -575,21 +502,11 @@ def main():
         
         # Generate questions if not already done
         if not st.session_state.questions:
-            with st.spinner("🤖 AI is generating your personalized quiz questions... This may take a moment."):
-                try:
-                    st.session_state.questions = openrouter_client.generate_questions(
-                        st.session_state.selected_category,
-                        st.session_state.selected_difficulty,
-                        10
-                    )
-                    if not st.session_state.questions or len(st.session_state.questions) == 0:
-                        st.error("Failed to generate questions. Please check your API key and try again.")
-                        st.session_state.quiz_started = False
-                        st.rerun()
-                except Exception as e:
-                    st.error(f"Error generating questions: {str(e)}")
-                    st.session_state.quiz_started = False
-                    st.rerun()
+            with st.spinner("🎲 Generating your personalized quiz questions..."):
+                st.session_state.questions = quiz_manager.generate_questions(
+                    st.session_state.selected_category,
+                    st.session_state.selected_difficulty
+                )
         
         current_q_index = st.session_state.current_question
         current_question = st.session_state.questions[current_q_index]
@@ -598,7 +515,7 @@ def main():
         st.markdown(f"""
         <div style='text-align: center; background-color: #f8f9fa; padding: 1rem; border-radius: 10px; margin-bottom: 2rem;'>
             <h2 style='color: #1f77b4; margin: 0;'>{st.session_state.selected_category} Quiz</h2>
-            <p style='margin: 0.5rem 0 0 0; color: #666;'>Difficulty: {st.session_state.selected_difficulty} | AI-Generated Questions</p>
+            <p style='margin: 0.5rem 0 0 0; color: #666;'>Difficulty: {st.session_state.selected_difficulty}</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -655,11 +572,7 @@ def main():
     
     # Sidebar with quiz info
     with st.sidebar:
-        st.markdown("### 🤖 AI Quiz Info")
-        
-        if st.session_state.api_configured:
-            st.success("✅ API Connected")
-            st.markdown(f"**Model:** {st.session_state.get('selected_model', 'claude-3.5-sonnet').split('/')[-1]}")
+        st.markdown("### 📊 Quiz Progress")
         
         if st.session_state.quiz_started and not st.session_state.quiz_completed:
             # Current progress
@@ -675,7 +588,7 @@ def main():
                 st.metric("Current Score", f"{current_score}/{questions_answered}")
             
             st.markdown("---")
-            st.markdown(f"**Topic:** {st.session_state.selected_category}")
+            st.markdown(f"**Category:** {st.session_state.selected_category}")
             st.markdown(f"**Difficulty:** {st.session_state.selected_difficulty}")
         
         elif st.session_state.quiz_completed:
@@ -688,7 +601,7 @@ def main():
             st.metric("Percentage", f"{percentage:.1f}%")
             
             st.markdown("---")
-            st.markdown(f"**Topic:** {st.session_state.selected_category}")
+            st.markdown(f"**Category:** {st.session_state.selected_category}")
             st.markdown(f"**Difficulty:** {st.session_state.selected_difficulty}")
         
         else:
@@ -696,28 +609,22 @@ def main():
             st.markdown("""
             ### Welcome! 👋
             
-            Experience AI-powered quizzes! 
+            Ready to test your knowledge? 
             
             **Features:**
-            - 🤖 AI-generated questions
-            - 🎯 Any topic you want
-            - ⚡ Multiple difficulty levels
-            - 💡 Instant explanations
+            - 🎯 Multiple categories
+            - ⚡ 3 difficulty levels
+            - 💡 Instant feedback
             - 📊 Detailed results
-            - 🔄 Always fresh content
+            - 🔄 Unlimited attempts
             
-            Choose your topic and let AI create the perfect quiz for you!
+            Choose your category and difficulty to get started!
             """)
         
         st.markdown("---")
         
-        # Reset and settings buttons
+        # Reset button (always available)
         if st.button("🔄 Reset Quiz", help="Start over with a new quiz"):
-            quiz_manager.reset_quiz()
-            st.rerun()
-        
-        if st.button("⚙️ Change API Settings", help="Reconfigure API settings"):
-            st.session_state.api_configured = False
             quiz_manager.reset_quiz()
             st.rerun()
 
