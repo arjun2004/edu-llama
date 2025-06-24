@@ -21,6 +21,7 @@ import re
 from urllib.parse import quote, urljoin
 import threading
 import time
+from pomodoro_timer import PomodoroTimer
 from cv import ImprovedEmotionDetector, shared_engagement_state  # 👈 import detector and state
 
 def check_disengagement_and_notify():
@@ -1053,6 +1054,15 @@ def main():
             st.warning("🔕 Disengagement alerts are disabled")
         
         st.markdown("---")
+        # Pomodoro Timer Section
+        st.markdown("---")
+        st.subheader("⏱️ Pomodoro Focus Timer")
+
+        # Initialize and render the Pomodoro timer
+        if 'timer' not in st.session_state:
+            st.session_state.timer = PomodoroTimer()
+        st.session_state.timer.render_sidebar()
+
         
         # PDF Upload Section
         st.subheader("📄 PDF Upload")
