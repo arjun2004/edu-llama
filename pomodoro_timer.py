@@ -139,7 +139,7 @@ class PomodoroTimer:
         # Calculate progress
         total_time = config['duration']
         remaining_time = max(0, st.session_state.pomodoro_current_time)
-        progress = (total_time - remaining_time) / total_time if total_time > 0 else 0
+        progress = max(0.0, min(1.0, (total_time - remaining_time) / total_time)) if total_time > 0 else 0.0
         
         # Phase header with icon and color
         st.markdown(f"""
@@ -248,6 +248,12 @@ class PomodoroTimer:
                 st.session_state.pomodoro_audio_enabled = st.checkbox(
                     "🔊 Audio notifications", st.session_state.pomodoro_audio_enabled
                 )
+                # 🔁 Auto-sync timer to updated duration if timer is not running
+                if not st.session_state.pomodoro_is_running:
+                    current_phase = st.session_state.pomodoro_current_phase
+                    config = self._get_phase_config(current_phase)
+                    st.session_state.pomodoro_current_time = config['duration']
+
                 
                 # Reset all button
                 if st.button("🔄 Reset All Settings"):
