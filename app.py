@@ -22,6 +22,7 @@ from urllib.parse import quote, urljoin
 import threading
 import time
 from pomodoro_timer import PomodoroTimer
+import time  
 from cv import ImprovedEmotionDetector, shared_engagement_state  # 👈 import detector and state
 
 def check_disengagement_and_notify():
@@ -987,57 +988,81 @@ def main():
         st.markdown("---")
         
         # Voice Settings
-        st.subheader("🎤 Voice Features")
-        voice_enabled = st.checkbox("Enable Voice", value=True)
-        
-        if voice_enabled and st.session_state.voice_handler:
-            mic_status = "🟢" if st.session_state.voice_handler.microphone else "🔴"
-            tts_status = "🟢" if st.session_state.voice_handler.tts_engine else "🔴"
-            
-            st.markdown(f"**Microphone:** {mic_status}")
-            st.markdown(f"**Text-to-Speech:** {tts_status}")
-            
-            auto_speak = st.checkbox("Auto-speak responses", value=False)
-            
-            # Global stop button for voice
-            if st.session_state.voice_handler.is_speaking:
-                if st.button("⏹️ Stop All Speech", type="secondary"):
-                    st.session_state.voice_handler.stop_speech()
-                    st.success("Speech stopped!")
-                    st.rerun()
-        else:
-            auto_speak = False
+        with st.expander("🎤 Voice Features"):
+            voice_enabled = st.checkbox("Enable Voice", value=True)
+
+            if voice_enabled and st.session_state.voice_handler:
+                mic_status = "🟢" if st.session_state.voice_handler.microphone else "🔴"
+                tts_status = "🟢" if st.session_state.voice_handler.tts_engine else "🔴"
+
+                st.markdown(f"**Microphone:** {mic_status}")
+                st.markdown(f"**Text-to-Speech:** {tts_status}")
+                auto_speak = st.checkbox("Auto-speak responses", value=False)
+
+                if st.session_state.voice_handler.is_speaking:
+                    if st.button("⏹️ Stop All Speech", type="secondary"):
+                        st.session_state.voice_handler.stop_speech()
+                        st.success("Speech stopped!")
+                        st.rerun()
+            else:
+                auto_speak = False
+
         
         st.markdown("---")
         
         # Engagement Monitoring
-        st.subheader("📊 Engagement Monitoring")
         
-        # Real-time engagement status
-        engagement_state = shared_engagement_state.get('last_state', 'UNKNOWN')
-        disengaged_duration = shared_engagement_state.get('disengaged_duration', 0)
-        disengaged_count = shared_engagement_state.get('disengaged_count', 0)
-        
-        # Engagement status indicator
-        if engagement_state == "ENGAGED":
-            st.success("🟢 Student Engaged")
-        elif engagement_state == "DISENGAGED":
-            st.error("🔴 Student Disengaged")
-        else:
-            st.warning("🟡 Student Neutral")
-        
-        # Engagement metrics
-        st.markdown(f"**Disengaged Duration:** {disengaged_duration:.1f}s")
-        st.markdown(f"**Disengagement Count:** {disengaged_count}")
-        
-        # Additional engagement information
-        current_emotion = shared_engagement_state.get('current_emotion', 'UNKNOWN')
-        engagement_score = shared_engagement_state.get('engagement_score', 0.0)
-        face_detected = shared_engagement_state.get('face_detected', False)
-        
-        st.markdown(f"**Current Emotion:** {current_emotion}")
-        st.markdown(f"**Engagement Score:** {engagement_score:.2f}")
-        st.markdown(f"**Face Detected:** {'✅' if face_detected else '❌'}")
+
+        with st.expander("📊 Engagement Monitoring", expanded=False):
+            realtime = st.checkbox("🔄 Live Update", value=True)
+            engagement_box = st.empty()
+
+            if realtime:
+                for _ in range(60):  # Refresh loop (max 60 cycles)
+                    with engagement_box.container():
+                        engagement_state = shared_engagement_state.get('last_state', 'UNKNOWN')
+                        disengaged_duration = shared_engagement_state.get('disengaged_duration', 0)
+                        disengaged_count = shared_engagement_state.get('disengaged_count', 0)
+                        current_emotion = shared_engagement_state.get('current_emotion', 'UNKNOWN')
+                        engagement_score = shared_engagement_state.get('engagement_score', 0.0)
+                        face_detected = shared_engagement_state.get('face_detected', False)
+
+                        if engagement_state == "ENGAGED":
+                            st.success("🟢 Student Engaged")
+                        elif engagement_state == "DISENGAGED":
+                            st.error("🔴 Student Disengaged")
+                        else:
+                            st.warning("🟡 Student Neutral")
+
+                        st.markdown(f"**Disengaged Duration:** {disengaged_duration:.1f}s")
+                        st.markdown(f"**Disengagement Count:** {disengaged_count}")
+                        st.markdown(f"**Current Emotion:** `{current_emotion}`")
+                        st.markdown(f"**Engagement Score:** `{engagement_score:.2f}`")
+                        st.markdown(f"**Face Detected:** `{face_detected}`")
+
+                    time.sleep(2)
+            else:
+                with engagement_box.container():
+                    engagement_state = shared_engagement_state.get('last_state', 'UNKNOWN')
+                    disengaged_duration = shared_engagement_state.get('disengaged_duration', 0)
+                    disengaged_count = shared_engagement_state.get('disengaged_count', 0)
+                    current_emotion = shared_engagement_state.get('current_emotion', 'UNKNOWN')
+                    engagement_score = shared_engagement_state.get('engagement_score', 0.0)
+                    face_detected = shared_engagement_state.get('face_detected', False)
+
+                    if engagement_state == "ENGAGED":
+                        st.success("🟢 Student Engaged")
+                    elif engagement_state == "DISENGAGED":
+                        st.error("🔴 Student Disengaged")
+                    else:
+                        st.warning("🟡 Student Neutral")
+
+                    st.markdown(f"**Disengaged Duration:** {disengaged_duration:.1f}s")
+                    st.markdown(f"**Disengagement Count:** {disengaged_count}")
+                    st.markdown(f"**Current Emotion:** `{current_emotion}`")
+                    st.markdown(f"**Engagement Score:** `{engagement_score:.2f}`")
+                    st.markdown(f"**Face Detected:** `{face_detected}`")
+
         
         # Engagement score progress bar
         st.progress(engagement_score)
