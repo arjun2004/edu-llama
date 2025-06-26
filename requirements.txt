@@ -1,13 +1,27 @@
-PyPDF2
-streamlit
-requests
-SpeechRecognition
-pyttsx3
-pyaudio
-crawl4ai
-Pillow
-beautifulsoup4
-opencv-python
-numpy
-fer
-matplotlib
+# Core Streamlit and Web Framework
+streamlit>=1.28.0,<2.0.0
+
+# HTTP Requests and API Communication
+requests>=2.31.0,<3.0.0
+
+# PDF Processing
+PyPDF2>=3.0.0,<4.0.0
+
+# Speech Recognition and Text-to-Speech
+SpeechRecognition>=3.10.0,<4.0.0
+pyttsx3>=2.90,<3.0.0
+pyaudio>=0.2.11,<1.0.0
+
+# Image Processing
+Pillow>=10.0.0,<11.0.0
+
+# Computer Vision and Emotion Detection
+opencv-python>=4.8.0,<5.0.0
+numpy>=1.24.0,<2.0.0
+fer>=22.4.0,<23.0.0
+
+# Data Visualization
+matplotlib>=3.7.0,<4.0.0
+
+# Additional Dependencies
+# Note: tkinter is part of Python standard library, no need to install separately

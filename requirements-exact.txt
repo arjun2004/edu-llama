@@ -1,0 +1,33 @@
+# Exact versions for maximum reproducibility
+# Generated for edu-llama AI Learning Assistant
+
+# Core Streamlit and Web Framework
+streamlit==1.45.1
+
+# HTTP Requests and API Communication
+requests==2.31.0
+
+# PDF Processing
+PyPDF2==3.0.1
+
+# Speech Recognition and Text-to-Speech
+SpeechRecognition==3.10.0
+pyttsx3==2.90
+pyaudio==0.2.11
+
+# Image Processing
+Pillow==10.0.1
+
+# Computer Vision and Emotion Detection
+opencv-python==4.8.1.78
+numpy==1.24.3
+fer==22.4.0
+
+# Data Visualization
+matplotlib==3.7.2
+
+# Standard Library Dependencies (no installation needed):
+# - tkinter (GUI for emotion detection)
+# - asyncio (async operations)
+# - json, io, pathlib, threading, base64, tempfile, os, platform, datetime, re, urllib
+# - typing, collections, enum 
