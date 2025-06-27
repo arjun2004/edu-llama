@@ -962,7 +962,7 @@ def main():
     with col2:
         st.markdown("### 🧭 Navigation")
         if st.button("🧠 Go to Interactive Quiz", type="secondary", use_container_width=True):
-            st.switch_page("quiz.py")
+            st.switch_page("pages/quiz.py")
         st.markdown("*The quiz app shares the same API key configuration*")
     st.markdown("---")
     
@@ -1240,7 +1240,7 @@ def main():
     
     # Quiz app navigation
     if st.button("🧠 Interactive Quiz", type="secondary", use_container_width=True):
-        st.switch_page("quiz.py")
+        st.switch_page("pages/quiz.py")
     
     st.markdown("*Navigate to other apps*")
     
