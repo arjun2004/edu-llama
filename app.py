@@ -956,6 +956,16 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
+    # Navigation section
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("### 🧭 Navigation")
+        if st.button("🧠 Go to Interactive Quiz", type="secondary", use_container_width=True):
+            st.switch_page("quiz.py")
+        st.markdown("*The quiz app shares the same API key configuration*")
+    st.markdown("---")
+    
     # Initialize voice handler
     if 'voice_handler' not in st.session_state:
         try:
@@ -977,6 +987,8 @@ def main():
         st.session_state.listening = False
     if 'voice_input' not in st.session_state:
         st.session_state.voice_input = ""
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = ""
     
     # Sidebar Configuration
     with st.sidebar:
@@ -987,11 +999,17 @@ def main():
             "OpenRouter API Key",
             type="password",
             help="Enter your OpenRouter API key",
-            placeholder="sk-or-v1-..."
+            placeholder="sk-or-v1-...",
+            value=st.session_state.api_key
         )
+        
+        # Store API key in session state for sharing with other pages
+        if api_key != st.session_state.api_key:
+            st.session_state.api_key = api_key
         
         if api_key:
             st.success("✅ API Key configured")
+            st.info("🔗 This API key is shared with the Quiz app")
         else:
             st.warning("⚠️ API Key required")
         
@@ -1215,6 +1233,16 @@ def main():
             st.session_state.chat_history = []
             st.success("Chat cleared!")
             st.rerun()
+    
+    # Navigation Section in Sidebar
+    st.markdown("---")
+    st.subheader("🧭 Navigation")
+    
+    # Quiz app navigation
+    if st.button("🧠 Interactive Quiz", type="secondary", use_container_width=True):
+        st.switch_page("quiz.py")
+    
+    st.markdown("*Navigate to other apps*")
     
     # Main Chat Interface
     if not api_key:

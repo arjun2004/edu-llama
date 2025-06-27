@@ -67,18 +67,19 @@ class QuizManager:
     
     def __init__(self):
         self.initialize_session_state()
-        # Initialize OpenRouter client - you'll need to set your API key
+        # Initialize OpenRouter client using shared API key
         self.openrouter_client = self.get_openrouter_client()
     
 
     def get_openrouter_client(self):
-        """Initialize OpenRouter client with API key from secrets or environment"""
+        """Initialize OpenRouter client with API key from app.py's session state"""
         try:
-            # Hardcoded API key for testing (replace with your actual API key)
-            api_key = "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"
+            # Get API key from the shared session state (set by app.py)
+            api_key = st.session_state.get('api_key', None)
             
-            if not api_key or api_key == "your_openrouter_api_key_here":
-                st.error("⚠️ Please replace 'your_openrouter_api_key_here' with your actual OpenRouter API key.")
+            if not api_key:
+                st.error("⚠️ Please enter your OpenRouter API key in the main app (app.py) first.")
+                st.info("💡 Go to the main app and configure your API key in the sidebar.")
                 return None
                 
             return OpenRouterClient(api_key)
@@ -330,6 +331,45 @@ Difficulty: {difficulty}"""
 def display_start_screen():
     """Display the quiz start screen with topic input and difficulty selection"""
     
+    # Check if API key is available
+    api_key = st.session_state.get('api_key', None)
+    if not api_key:
+        st.markdown("""
+        <div style='text-align: center; padding: 2rem 0;'>
+            <h1 style='color: #1f77b4; font-size: 3rem; margin-bottom: 0;'>🧠 Interactive Quiz</h1>
+            <p style='font-size: 1.2rem; color: #666; margin-top: 0;'>Test your knowledge on any topic with AI-generated questions!</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        st.error("⚠️ **API Key Required**")
+        st.info("""
+        🔗 **This quiz app shares the API key with the main AI Learning Assistant.**
+        
+        To use this quiz:
+        1. Go to the **main app** (AI Learning Assistant)
+        2. Enter your **OpenRouter API key** in the sidebar
+        3. Return to this quiz page
+        
+        The API key will be automatically shared between both apps.
+        """)
+        
+        # Navigation buttons
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("🏠 Go to Main App", type="primary", use_container_width=True):
+                st.switch_page("app.py")
+        
+        st.markdown("---")
+        st.markdown("""
+        <div style='text-align: center; color: #888; font-size: 0.9rem;'>
+            💡 <b>Tip:</b> You only need to configure the API key once in the main app!<br>
+            🔒 <b>Secure:</b> The API key is stored securely in your session.
+        </div>
+        """, unsafe_allow_html=True)
+        return
+    
     # Header
     st.markdown("""
     <div style='text-align: center; padding: 2rem 0;'>
@@ -337,6 +377,11 @@ def display_start_screen():
         <p style='font-size: 1.2rem; color: #666; margin-top: 0;'>Test your knowledge on any topic with AI-generated questions!</p>
     </div>
     """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # API Key status
+    st.success("✅ **API Key Configured** - Ready to generate questions!")
     
     st.markdown("---")
     
@@ -625,8 +670,22 @@ def display_results():
             use_container_width=True
         )
 
+def test_api_key_integration():
+    """Test function to verify API key integration"""
+    api_key = st.session_state.get('api_key', None)
+    if api_key:
+        st.success(f"✅ API Key found: {api_key[:10]}...")
+        return True
+    else:
+        st.error("❌ No API key found in session state")
+        return False
+
 def main():
     """Main application logic"""
+    
+    # Test API key integration
+    if st.session_state.get('debug_mode', False):
+        test_api_key_integration()
     
     # Initialize quiz manager
     if 'quiz_manager' not in st.session_state:
