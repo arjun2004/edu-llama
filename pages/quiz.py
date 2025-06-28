@@ -10,8 +10,24 @@ st.set_page_config(
     page_title="Interactive Quiz App",
     page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    
+    
 )
+# Hide default Streamlit sidebar page menu
+st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+    </style>
+""", unsafe_allow_html=True)
+with st.sidebar:
+    st.markdown("### 🧭 Navigation")
+    st.info("You are in the **Quiz App**")
+
+    if st.button("🏠 Return to Main App", use_container_width=True):
+        st.switch_page("app.py")
+
 
 @dataclass
 class Question:

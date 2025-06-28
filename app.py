@@ -830,6 +830,15 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    # Hide default Streamlit sidebar page menu
+    st.markdown("""
+        <style>
+            [data-testid="stSidebarNav"] {
+                display: none;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
     
     # Initialize disengagement tracking
     if 'last_disengagement_check' not in st.session_state:
@@ -956,15 +965,7 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    # Navigation section
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("### 🧭 Navigation")
-        if st.button("🧠 Go to Interactive Quiz", type="secondary", use_container_width=True):
-            st.switch_page("pages/quiz.py")
-        st.markdown("*The quiz app shares the same API key configuration*")
-    st.markdown("---")
+  
     
     # Initialize voice handler
     if 'voice_handler' not in st.session_state:
@@ -1156,6 +1157,28 @@ def main():
                 st.warning("🔴 Engagement monitoring is disabled")
                 st.info("Toggle the switch above to enable real-time emotion tracking and engagement monitoring.")
 
+        # Sidebar: Custom Navigation Section
+        with st.sidebar:
+            st.markdown("## 🎓 AI Learning Assistant")
+
+            # Engagement Status (optional toggle display)
+            if st.session_state.get('engagement_monitoring_enabled', False):
+                st.success("📶 Engagement Monitoring: ON")
+            else:
+                st.warning("📴 Engagement Monitoring: OFF")
+
+            # Navigation Section
+            st.markdown("---")
+            st.subheader("🧭 Navigation")
+
+            if st.button("🧠 Interactive Quiz", type="secondary", use_container_width=True):
+                st.switch_page("pages/quiz.py")  # ✅ Make sure quiz.py is in the same directory as app.py
+
+            st.markdown("*Navigate to other apps*")
+
+            st.markdown("---")
+            st.markdown("Made with ❤️ by your AI assistant.")
+
         # Pomodoro Timer Section
         st.markdown("---")
         st.subheader("⏱️ Pomodoro Focus Timer")
@@ -1234,15 +1257,8 @@ def main():
             st.success("Chat cleared!")
             st.rerun()
     
-    # Navigation Section in Sidebar
-    st.markdown("---")
-    st.subheader("🧭 Navigation")
     
-    # Quiz app navigation
-    if st.button("🧠 Interactive Quiz", type="secondary", use_container_width=True):
-        st.switch_page("pages/quiz.py")
     
-    st.markdown("*Navigate to other apps*")
     
     # Main Chat Interface
     if not api_key:
