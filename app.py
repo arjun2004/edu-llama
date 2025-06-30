@@ -37,13 +37,13 @@ def check_disengagement_and_notify():
             disengaged_count = shared_engagement_state.get('disengaged_count', 0)
             if disengaged_duration > 120:
                 message = f"Student has been disengaged for {disengaged_duration:.1f} seconds!"
-            elif disengaged_count >= 8:
+            elif disengaged_count >= 20:
                 message = f"Student has shown disengagement {disengaged_count} times!"
             else:
                 message = "Student appears disengaged!"
             notification_enabled = st.session_state.get('notification_enabled', False)
             if notification_enabled:
-                st.toast(f"⚠️ {message}\nConsider: Simplifying explanations, adding visual aids, taking a break, or checking if the student needs help.", icon="⚠️")
+                st.toast(f"⚠️ {message}\nIt seems like you might be getting bored — maybe try the quiz or take a short break?", icon="⚠️")
             return True
         return False
     except Exception as e:
