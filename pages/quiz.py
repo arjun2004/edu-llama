@@ -83,8 +83,7 @@ class QuizManager:
     
     def __init__(self):
         self.initialize_session_state()
-        # Initialize OpenRouter client using shared API key
-        self.openrouter_client = self.get_openrouter_client()
+        # OpenRouter client is now fetched on-demand in methods that need it.
     
 
     def get_openrouter_client(self):
@@ -130,7 +129,8 @@ class QuizManager:
     
     def is_topic_appropriate(self, topic: str) -> bool:
         """Check if the topic is appropriate and educational"""
-        if not self.openrouter_client:
+        openrouter_client = self.get_openrouter_client()
+        if not openrouter_client:
             return True  # Allow if we can't check
             
         inappropriate_keywords = [
@@ -163,7 +163,7 @@ class QuizManager:
                 }
             ]
             
-            response = self.openrouter_client.chat_completion(messages, max_tokens=10)
+            response = openrouter_client.chat_completion(messages, max_tokens=10)
             
             if "error" not in response:
                 content = response["choices"][0]["message"]["content"].strip().upper()
@@ -175,7 +175,8 @@ class QuizManager:
     
     def generate_llm_questions(self, topic: str, difficulty: str) -> List[Question]:
         """Generate quiz questions using LLM based on topic and difficulty"""
-        if not self.openrouter_client:
+        openrouter_client = self.get_openrouter_client()
+        if not openrouter_client:
             st.error("LLM client not available. Using fallback questions.")
             return self.get_fallback_questions()
         
@@ -240,8 +241,8 @@ Difficulty: {difficulty}"""
         
         try:
             with st.spinner(f"🤖 Generating {difficulty.lower()} questions about '{topic}'..."):
-                response = self.openrouter_client.chat_completion(
-                    messages, 
+                response = openrouter_client.chat_completion(
+                    messages,
                     max_tokens=2500,
                     temperature=0.7
                 )

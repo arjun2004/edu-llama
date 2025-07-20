@@ -570,9 +570,9 @@ class OpenRouterClient:
         # Initialize image scraper
         self.image_scraper = ImageScraper()
     
-    def chat_completion(self, 
-                       messages: List[Dict[str, str]], 
-                       model: str = "meta-llama/llama-3.1-8b-instruct:free",
+    def chat_completion(self,
+                       messages: List[Dict[str, str]],
+                       model: str,
                        temperature: float = 0.7,
                        max_tokens: Optional[int] = None) -> Dict:
         """Send a chat completion request to OpenRouter"""
@@ -600,12 +600,12 @@ class OpenRouterClient:
         except json.JSONDecodeError as e:
             return {"error": f"JSON decode failed: {str(e)}"}
     
-    async def simple_prompt(self, prompt: str) -> Dict:
+    async def simple_prompt(self, prompt: str, model: str) -> Dict:
         """Get a simple text response from the model"""
         try:
             # Get text response using chat completion
             text_response = self.chat_completion(
-                [
+                messages=[
                     {
                         "role": "system",
                         "content": (
@@ -627,7 +627,7 @@ class OpenRouterClient:
                         "content": prompt
                     }
                 ],
-                "meta-llama/llama-3.1-8b-instruct:free"
+                model=model
             )
 
             # Handle error or missing output
@@ -700,7 +700,7 @@ class OpenRouterClient:
         
         return f"PDF '{filename}' loaded successfully. Content length: {len(self.pdf_content)} characters"
     
-    async def summarize_pdf(self, custom_prompt: str = None) -> Dict:
+    async def summarize_pdf(self, model: str, custom_prompt: str = None) -> Dict:
         """Generate a summary of the loaded PDF"""
         if not self.pdf_content:
             return {"text": "Error: No PDF content loaded. Please upload a PDF first.", "images": []}
@@ -738,9 +738,9 @@ class OpenRouterClient:
         else:
             prompt = f"{prompt}\n\n{self.pdf_content}"
         
-        return await self.simple_prompt(prompt)
+        return await self.simple_prompt(prompt, model=model)
     
-    async def ask_pdf_question(self, question: str) -> Dict:
+    async def ask_pdf_question(self, question: str, model: str) -> Dict:
         """Ask a question about the loaded PDF content"""
         if not self.pdf_content:
             return {"text": "Error: No PDF content loaded. Please upload a PDF first.", "images": []}
@@ -754,7 +754,7 @@ class OpenRouterClient:
             truncated_content = self.pdf_content[:max_content_length-500]
             prompt = f"Based on the following PDF content (truncated), please answer this question: {question}\n\nPDF Content:\n{truncated_content}\n\n[Note: Content was truncated due to length limits]\n\nIf the answer is not found in the available PDF content, please say so clearly."
         
-        return await self.simple_prompt(prompt)
+        return await self.simple_prompt(prompt, model=model)
     
     def clear_pdf_content(self):
         """Clear the stored PDF content"""
@@ -1019,13 +1019,14 @@ def main():
         # Model Settings
         st.subheader("🤖 Model Settings")
         model_options = [
-            "meta-llama/llama-3.1-8b-instruct:free",
+            "meta-llama/llama-3.1-405b-instruct",
             "meta-llama/llama-3.1-70b-instruct:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
             "mistralai/mistral-7b-instruct:free",
             "microsoft/phi-3-mini-128k-instruct:free"
         ]
         
-        selected_model = st.selectbox("AI Model", model_options)
+        selected_model = st.selectbox("AI Model", model_options, index=0)
         temperature = st.slider("Temperature", 0.0, 1.0, 0.7, 0.1)
         
         st.markdown("---")
@@ -1239,7 +1240,7 @@ def main():
             if st.button("📋 Summarize PDF"):
                 if st.session_state.client:
                     with st.spinner("Generating summary..."):
-                        summary = asyncio.run(st.session_state.client.summarize_pdf())
+                        summary = asyncio.run(st.session_state.client.summarize_pdf(model=selected_model))
                         st.session_state.chat_history.append({
                             "role": "user",
                             "content": "Please summarize the uploaded PDF",
@@ -1347,10 +1348,10 @@ def main():
         with st.spinner("🤖 AI is thinking..."):
             try:
                 if st.session_state.pdf_loaded:
-                    response = asyncio.run(st.session_state.client.ask_pdf_question(user_input))
+                    response = asyncio.run(st.session_state.client.ask_pdf_question(user_input, model=selected_model))
                 else:
                     # Run async operation
-                    response = asyncio.run(st.session_state.client.simple_prompt(user_input))
+                    response = asyncio.run(st.session_state.client.simple_prompt(user_input, model=selected_model))
                 
                 # Add AI response to history
                 st.session_state.chat_history.append({
