@@ -1,4 +1,5 @@
 # Exact versions for maximum reproducibility
+# Requires Python 3.12 (several pins have no wheels for 3.13+)
 # Generated for edu-llama AI Learning Assistant
 
 # Core Streamlit and Web Framework
@@ -10,21 +11,26 @@ requests==2.31.0
 # PDF Processing
 PyPDF2==3.0.1
 
+# Repairing malformed JSON from LLM quiz replies
+json-repair==0.63.5
+
 # Speech Recognition and Text-to-Speech
 SpeechRecognition==3.10.0
 pyttsx3==2.90
-pyaudio==0.2.11
+pyaudio==0.2.14
 
 # Image Processing
 Pillow==10.0.1
 
 # Computer Vision and Emotion Detection
 opencv-python==4.8.1.78
-numpy==1.24.3
+numpy==1.26.4
 fer==22.4.0
+tensorflow==2.21.0  # required by fer at runtime
+setuptools==80.10.2  # fer imports pkg_resources (removed in setuptools 81)
 
 # Data Visualization
-matplotlib==3.7.2
+matplotlib==3.8.4
 
 # Standard Library Dependencies (no installation needed):
 # - tkinter (GUI for emotion detection)

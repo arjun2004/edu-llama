@@ -2,6 +2,7 @@ import streamlit as st
 import random
 import json
 import requests
+from json_repair import repair_json
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 
@@ -38,6 +39,25 @@ class Question:
     correct_answer: str
     explanation: str = ""
 
+def parse_questions_json(content: str) -> List[Dict[str, Any]]:
+    """Extract the question list from an LLM reply, repairing common JSON mistakes
+    (unescaped quotes, trailing commas, replies cut off mid-question)."""
+    start = content.find('[')
+    if start == -1:
+        return []
+    end = content.rfind(']') + 1
+    snippet = content[start:end] if end > start else content[start:]
+    try:
+        data = json.loads(snippet)
+    except json.JSONDecodeError:
+        data = repair_json(snippet, return_objects=True)
+    return [q for q in data if isinstance(q, dict)] if isinstance(data, list) else []
+
+FALLBACK_MODELS = [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "qwen/qwen3.8-27b:free",
+]
+
 class OpenRouterClient:
     """OpenRouter API client for LLM integration"""
     def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api/v1"):
@@ -45,17 +65,20 @@ class OpenRouterClient:
         self.base_url = base_url
         self.headers = {
             "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "http://localhost:8501",
+            "X-OpenRouter-Title": "edu-llama",
             "Content-Type": "application/json"
         }
     
     def chat_completion(self, 
                        messages: List[Dict[str, str]], 
-                       model: str = "meta-llama/llama-3.1-8b-instruct:free",
+                       model: str = "google/gemma-4-31b-it:free",
                        temperature: float = 0.7,
                        max_tokens: Optional[int] = None) -> Dict:
         """Send a chat completion request to OpenRouter"""
+        # OpenRouter tries these in order if one is rate-limited or down
         payload = {
-            "model": model,
+            "models": [model] + [m for m in FALLBACK_MODELS if m != model][:2],
             "messages": messages,
             "temperature": temperature
         }
@@ -68,9 +91,14 @@ class OpenRouterClient:
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=payload,
-                timeout=30
+                timeout=60
             )
-            response.raise_for_status()
+            if not response.ok:
+                try:
+                    detail = response.json()["error"]["message"]
+                except (ValueError, KeyError, TypeError):
+                    detail = response.text[:300]
+                return {"error": f"Request failed ({response.status_code}): {detail}"}
             return response.json()
             
         except requests.exceptions.RequestException as e:
@@ -216,7 +244,8 @@ Make sure:
 - Questions are educational and appropriate
 - Mix of multiple choice and true/false questions (aim for 7 multiple choice, 3 true/false)
 - Difficulty matches the requested level
-- All JSON syntax is correct
+- All JSON syntax is correct; never use double quotes inside text (use single quotes instead)
+- Respond with only the JSON array, no extra text or markdown
 - Exactly 10 questions
 - No duplicate questions
 - Questions test actual knowledge, not trivia"""
@@ -243,8 +272,8 @@ Difficulty: {difficulty}"""
             with st.spinner(f"🤖 Generating {difficulty.lower()} questions about '{topic}'..."):
                 response = openrouter_client.chat_completion(
                     messages,
-                    max_tokens=2500,
-                    temperature=0.7
+                    max_tokens=4000,
+                    temperature=0.5
                 )
             
             if "error" in response:
@@ -253,13 +282,9 @@ Difficulty: {difficulty}"""
             
             content = response["choices"][0]["message"]["content"].strip()
             
-            # Try to extract JSON from the response
-            json_start = content.find('[')
-            json_end = content.rfind(']') + 1
+            questions_data = parse_questions_json(content)
             
-            if json_start != -1 and json_end != -1:
-                json_content = content[json_start:json_end]
-                questions_data = json.loads(json_content)
+            if questions_data:
                 
                 # Convert to Question objects
                 questions = []

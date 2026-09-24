@@ -557,12 +557,22 @@ class VoiceHandler:
             st.warning(f"Audio file creation warning: {e}")
             return None
 
+FREE_MODELS = [
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "qwen/qwen3.8-27b:free",
+    "z-ai/glm-5.2:free",
+    "google/gemma-4-26b-a4b-it:free",
+]
+
 class OpenRouterClient:
     def __init__(self, api_key: str, base_url: str = "https://openrouter.ai/api/v1"):
         self.api_key = api_key
         self.base_url = base_url
         self.headers = {
             "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "http://localhost:8501",
+            "X-OpenRouter-Title": "edu-llama",
             "Content-Type": "application/json"
         }
         # Store PDF content for follow-up questions
@@ -576,30 +586,37 @@ class OpenRouterClient:
                        temperature: float = 0.7,
                        max_tokens: Optional[int] = None) -> Dict:
         """Send a chat completion request to OpenRouter"""
+        # OpenRouter tries these in order if one is rate-limited or down
+        fallbacks = [m for m in FREE_MODELS if m != model][:2]
         payload = {
-            "model": model,
+            "models": [model] + fallbacks,
             "messages": messages,
             "temperature": temperature
         }
-        
+
         if max_tokens:
             payload["max_tokens"] = max_tokens
-        
+
         try:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=payload,
-                timeout=30
+                timeout=60
             )
-            response.raise_for_status()
+            if not response.ok:
+                try:
+                    detail = response.json()["error"]["message"]
+                except (ValueError, KeyError, TypeError):
+                    detail = response.text[:300]
+                return {"error": f"Request failed ({response.status_code}): {detail}"}
             return response.json()
-            
+
         except requests.exceptions.RequestException as e:
             return {"error": f"Request failed: {str(e)}"}
         except json.JSONDecodeError as e:
             return {"error": f"JSON decode failed: {str(e)}"}
-    
+
     async def simple_prompt(self, prompt: str, model: str) -> Dict:
         """Get a simple text response from the model"""
         try:
@@ -1002,8 +1019,8 @@ def main():
             help="Enter your OpenRouter API key",
             placeholder="sk-or-v1-...",
             value=st.session_state.api_key
-        )
-        
+        ).strip()
+
         # Store API key in session state for sharing with other pages
         if api_key != st.session_state.api_key:
             st.session_state.api_key = api_key
@@ -1018,15 +1035,8 @@ def main():
         
         # Model Settings
         st.subheader("🤖 Model Settings")
-        model_options = [
-            "meta-llama/llama-3.1-405b-instruct",
-            "meta-llama/llama-3.1-70b-instruct:free",
-            "meta-llama/llama-3.1-8b-instruct:free",
-            "mistralai/mistral-7b-instruct:free",
-            "microsoft/phi-3-mini-128k-instruct:free"
-        ]
-        
-        selected_model = st.selectbox("AI Model", model_options, index=0)
+        selected_model = st.selectbox("AI Model", FREE_MODELS, index=0,
+                                      help="If this model is busy, OpenRouter automatically falls back to the next ones in the list.")
         temperature = st.slider("Temperature", 0.0, 1.0, 0.7, 0.1)
         
         st.markdown("---")
@@ -1197,7 +1207,7 @@ def main():
         
         if uploaded_file and api_key:
             if st.button("📂 Load PDF", type="primary"):
-                if st.session_state.client is None:
+                if st.session_state.client is None or st.session_state.client.api_key != api_key:
                     st.session_state.client = OpenRouterClient(api_key)
                 
                 with st.spinner("Loading PDF..."):
@@ -1267,8 +1277,8 @@ def main():
         st.info("💡 Get a free API key from [OpenRouter](https://openrouter.ai/)")
         return
     
-    # Initialize client
-    if st.session_state.client is None:
+    # Initialize client (recreate if the API key changed)
+    if st.session_state.client is None or st.session_state.client.api_key != api_key:
         st.session_state.client = OpenRouterClient(api_key)
     
     # Chat History Display
