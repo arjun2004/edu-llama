@@ -8,17 +8,14 @@ from pathlib import Path
 import speech_recognition as sr
 import pyttsx3
 import threading
-from io import BytesIO
 import base64
 import tempfile
 import os
 import platform
 from datetime import datetime
 import re
-from PIL import Image
 import asyncio
 import re
-from urllib.parse import quote, urljoin
 import threading
 import time
 from pomodoro_timer import PomodoroTimer
@@ -53,370 +50,6 @@ def engagement_watcher():
     st.session_state.show_quiz_dialog = True
     shared_engagement_state['disengaged_duration'] = 0
     st.rerun(scope="app")
-
-class ImageScraper:
-    def __init__(self):
-        # Firecrawl API configuration
-        self.firecrawl_api_key = "fc-90a16588f1684a14a4c35396cea6d911"
-        self.firecrawl_scrape_url = "https://api.firecrawl.dev/v1/scrape"
-        
-        # Enhanced image sources with better success rates
-        self.image_sources = [
-            {
-                'name': 'Wikipedia',
-                'url_template': 'https://en.wikipedia.org/wiki/{}',
-                'priority': 1
-            },
-            {
-                'name': 'Wikimedia Commons',
-                'url_template': 'https://commons.wikimedia.org/wiki/Category:{}',
-                'priority': 2
-            },
-            {
-                'name': 'Britannica',
-                'url_template': 'https://www.britannica.com/search?query={}',
-                'priority': 3
-            },
-            {
-                'name': 'Pexels',
-                'url_template': 'https://www.pexels.com/search/{}/',
-                'priority': 4
-            },
-            {
-                'name': 'Pixabay',
-                'url_template': 'https://pixabay.com/images/search/{}/',
-                'priority': 5
-            },
-            {
-                'name': 'Unsplash',
-                'url_template': 'https://unsplash.com/s/photos/{}',
-                'priority': 6
-            }
-        ]
-    
-    def extract_search_keywords(self, prompt: str) -> List[str]:
-        """Extract multiple keyword variations from user prompt for better image search"""
-        # Enhanced stop words list
-        question_words = {
-            'what', 'is', 'are', 'how', 'why', 'when', 'where', 'who', 'which',
-            'tell', 'me', 'about', 'explain', 'describe', 'define', 'definition',
-            'can', 'you', 'please', 'help', 'understand', 'learning', 'study',
-            'the', 'a', 'an', 'and', 'or', 'but', 'for', 'in', 'on', 'at',
-            'to', 'of', 'with', 'by', 'from', 'as', 'like', 'than', 'this',
-            'that', 'these', 'those', 'will', 'would', 'could', 'should'
-        }
-        
-        # Clean and extract meaningful words
-        words = re.findall(r'\b\w+\b', prompt.lower())
-        meaningful_words = [w for w in words if w not in question_words and len(w) > 2]
-        
-        # Generate multiple search variations
-        keywords = []
-        if meaningful_words:
-            # Primary: First 2-3 most relevant words
-            keywords.append(' '.join(meaningful_words[:3]))
-            # Secondary: Individual important words
-            if len(meaningful_words) > 1:
-                keywords.append(' '.join(meaningful_words[:2]))
-            # Tertiary: Single most important word
-            keywords.append(meaningful_words[0])
-        else:
-            # Fallback to original prompt
-            keywords.append(prompt.strip())
-        
-        return keywords
-    
-    def get_images_simple_scrape(self, query: str) -> List[str]:
-        """Enhanced scraping with multiple sources and better error handling"""
-        headers = {
-            "Authorization": f"Bearer {self.firecrawl_api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        all_images = []
-        keywords = self.extract_search_keywords(query)
-        
-        # Try multiple sources in priority order
-        for source in sorted(self.image_sources, key=lambda x: x['priority']):
-            if len(all_images) >= 5:  # Collect more initially, filter later
-                break
-                
-            for keyword in keywords[:2]:  # Try top 2 keyword variations
-                try:
-                    # Format URL based on source
-                    if source['name'] in ['Pixabay', 'Unsplash']:
-                        search_term = quote(keyword.replace(' ', '+'))
-                    else:
-                        search_term = keyword.replace(' ', '_')
-                    
-                    url = source['url_template'].format(search_term)
-                    
-                    data = {
-                        "url": url,
-                        "formats": ["markdown", "html"],
-                        "onlyMainContent": True,
-                        "timeout": 25000
-                    }
-                    
-                    st.info(f"🔍 Searching {source['name']} for: {keyword}")
-                    
-                    response = requests.post(self.firecrawl_scrape_url, headers=headers, json=data, timeout=30)
-                    
-                    if response.status_code == 200:
-                        json_data = response.json()
-                        images = self._extract_images_from_response(json_data, source['name'])
-                        
-                        if images:
-                            all_images.extend(images)
-                            st.success(f"✅ Found {len(images)} images from {source['name']}")
-                            break  # Move to next source after success
-                    else:
-                        st.warning(f"⚠️ {source['name']} returned status {response.status_code}")
-                        
-                except Exception as e:
-                    st.warning(f"⚠️ Error with {source['name']}: {str(e)}")
-                    continue
-        
-        # Remove duplicates and filter quality
-        return self._filter_and_deduplicate_images(all_images)
-    
-    def _extract_images_from_response(self, json_data: dict, source_name: str) -> List[str]:
-        """Extract images from API response based on source type"""
-        images = []
-        
-        if 'data' not in json_data:
-            return images
-        
-        data_content = json_data['data']
-        
-        if not isinstance(data_content, dict):
-            return images
-        
-        # Check direct images field
-        if 'images' in data_content:
-            images.extend(data_content['images'])
-        
-        # Check metadata images
-        if 'metadata' in data_content and 'images' in data_content['metadata']:
-            images.extend(data_content['metadata']['images'])
-        
-        # Parse HTML content with source-specific patterns
-        if 'html' in data_content:
-            html_content = data_content['html']
-            images.extend(self._extract_images_from_html(html_content, source_name))
-        
-        # Parse markdown content
-        if 'markdown' in data_content:
-            markdown_content = data_content['markdown']
-            md_img_pattern = r'!\[.*?\]\((https?://[^\)]+)\)'
-            md_images = re.findall(md_img_pattern, markdown_content)
-            images.extend(md_images)
-        
-        return images
-    
-    def _extract_images_from_html(self, html_content: str, source_name: str) -> List[str]:
-        """Extract images from HTML with source-specific patterns"""
-        images = []
-        
-        # Source-specific extraction patterns
-        patterns = {
-            'Wikipedia': [
-                r'<img[^>]+src="(//upload\.wikimedia\.org/[^"]+)"',
-                r'<img[^>]+src="(https://upload\.wikimedia\.org/[^"]+)"',
-                r'<img[^>]+src="(/wiki/[^"]+\.(?:jpg|jpeg|png|gif|svg))"'
-            ],
-            'Wikimedia Commons': [
-                r'<img[^>]+src="(https://upload\.wikimedia\.org/[^"]+)"',
-                r'href="(https://commons\.wikimedia\.org/wiki/File:[^"]+)"'
-            ],
-            'Britannica': [
-                r'<img[^>]+src="(https://cdn\.britannica\.com/[^"]+)"',
-                r'<img[^>]+data-src="(https://cdn\.britannica\.com/[^"]+)"'
-            ],
-            'Pexels': [
-                r'<img[^>]+src="(https://images\.pexels\.com/photos/[^"]+)"',
-                r'srcset="([^"]*https://images\.pexels\.com/photos/[^"]*)"'
-            ],
-            'Pixabay': [
-                r'<img[^>]+src="(https://cdn\.pixabay\.com/photo/[^"]+)"',
-                r'data-lazy="(https://cdn\.pixabay\.com/photo/[^"]+)"'
-            ],
-            'Unsplash': [
-                r'<img[^>]+src="(https://images\.unsplash\.com/[^"]+)"',
-                r'srcSet="([^"]*https://images\.unsplash\.com/[^"]*)"'
-            ]
-        }
-        
-        # Use source-specific patterns, fallback to generic
-        source_patterns = patterns.get(source_name, [r'<img[^>]+src="([^"]+)"'])
-        
-        for pattern in source_patterns:
-            found_images = re.findall(pattern, html_content, re.IGNORECASE)
-            for img in found_images:
-                # Handle protocol-relative URLs
-                if img.startswith('//'):
-                    images.append('https:' + img)
-                elif img.startswith('/') and source_name == 'Wikipedia':
-                    images.append('https://en.wikipedia.org' + img)
-                else:
-                    # For srcset, extract first URL
-                    if ' ' in img and 'http' in img:
-                        img = img.split()[0]
-                    images.append(img)
-        
-        return images
-    
-    def _filter_and_deduplicate_images(self, images: List[str]) -> List[str]:
-        """Filter out low-quality images and remove duplicates"""
-        # Patterns to exclude
-        exclude_patterns = [
-            'icon', 'favicon', 'logo', 'avatar', 'thumb/1', 'thumb/2',
-            'edit-icon', 'commons-logo', 'wikimedia-button', 'sprite',
-            'w=50', 'w=100', 'h=50', 'h=100', 'placeholder'
-        ]
-        
-        # Filter and deduplicate
-        seen = set()
-        filtered_images = []
-        
-        for img in images:
-            # Skip if already seen
-            if img in seen:
-                continue
-            
-            # Skip if matches exclude patterns
-            if any(pattern in img.lower() for pattern in exclude_patterns):
-                continue
-            
-            # Only include valid image URLs
-            if any(ext in img.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']) or \
-               any(domain in img.lower() for domain in ['upload.wikimedia.org', 'images.pexels.com', 'images.unsplash.com', 'cdn.pixabay.com', 'cdn.britannica.com']):
-                filtered_images.append(img)
-                seen.add(img)
-        
-        return filtered_images[:5]  # Return top 5 quality images
-    
-    def get_images_from_alternative_sources(self, query: str) -> List[str]:
-        """Fallback method - keeping for compatibility"""
-        # This now uses the enhanced get_images_simple_scrape
-        return self.get_images_simple_scrape(query)
-    
-    def _validate_image_download(self, img_url: str, headers: dict) -> tuple:
-        """Validate and download image with enhanced error handling"""
-        try:
-            img_response = requests.get(img_url, headers=headers, timeout=15)
-            
-            if img_response.status_code != 200:
-                return None, f"HTTP {img_response.status_code}"
-            
-            if len(img_response.content) < 1024:  # Skip very small files
-                return None, "File too small"
-            
-            # Validate it's actually an image
-            try:
-                img = Image.open(BytesIO(img_response.content))
-                
-                # Skip very small images (likely icons)
-                if min(img.size) < 150:
-                    return None, f"Image too small: {img.size}"
-                
-                # Convert to RGB if needed
-                if img.mode in ('RGBA', 'P'):
-                    img = img.convert('RGB')
-                
-                # Resize if too large (optimize for web display)
-                max_size = 1000
-                if max(img.size) > max_size:
-                    img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-                
-                # Convert to bytes with optimization
-                img_byte_arr = BytesIO()
-                img.save(img_byte_arr, format='JPEG', quality=85, optimize=True)
-                img_byte_arr = img_byte_arr.getvalue()
-                
-                return img_byte_arr, None
-                
-            except Exception as img_error:
-                return None, f"Image processing error: {str(img_error)}"
-                
-        except Exception as e:
-            return None, f"Download error: {str(e)}"
-    
-    async def search_images(self, query: str, max_images: int = 3) -> List[Dict]:
-        """Enhanced image search with better error handling and quality filtering"""
-        try:
-            # Extract meaningful keywords from the query
-            search_keywords = self.extract_search_keywords(query)
-            primary_keyword = search_keywords[0] if search_keywords else query
-            
-            st.info(f"🔍 Searching for images with keywords: '{primary_keyword}' (from prompt: '{query}')")
-            
-            # Get image URLs using enhanced scraping
-            image_urls = self.get_images_simple_scrape(primary_keyword)
-            
-            if not image_urls:
-                st.warning("No images found with primary method, trying alternative approach...")
-                # Could add more fallback methods here if needed
-                return []
-            
-            st.info(f"📥 Found {len(image_urls)} potential images, validating...")
-            
-            # Process and validate images
-            valid_images = []
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1'
-            }
-            
-            for idx, img_url in enumerate(image_urls[:max_images * 2]):  # Try more than needed
-                if len(valid_images) >= max_images:
-                    break
-                
-                st.info(f"🖼️ Processing image {idx + 1}/{min(len(image_urls), max_images * 2)}: {img_url[:50]}...")
-                
-                img_data, error = self._validate_image_download(img_url, headers)
-                
-                if img_data:
-                    valid_images.append({
-                        'url': img_url,
-                        'title': f"Image related to: {primary_keyword}",
-                        'image_data': img_data,
-                        'source': self._identify_image_source(img_url)
-                    })
-                    st.success(f"✅ Successfully processed image {len(valid_images)}")
-                else:
-                    st.warning(f"⚠️ Skipped image {idx + 1}: {error}")
-            
-            if valid_images:
-                st.success(f"🎉 Successfully processed {len(valid_images)} high-quality images")
-            else:
-                st.error("❌ No valid images could be processed")
-            
-            return valid_images
-            
-        except Exception as e:
-            st.error(f"❌ Image search error: {str(e)}")
-            return []
-    
-    def _identify_image_source(self, url: str) -> str:
-        """Identify the source of an image URL"""
-        if 'wikimedia.org' in url or 'wikipedia.org' in url:
-            return 'Wikipedia/Wikimedia'
-        elif 'pexels.com' in url:
-            return 'Pexels'
-        elif 'pixabay.com' in url:
-            return 'Pixabay'
-        elif 'unsplash.com' in url:
-            return 'Unsplash'
-        elif 'britannica.com' in url:
-            return 'Britannica'
-        else:
-            return 'Unknown'
 
 class VoiceHandler:
     def __init__(self):
@@ -581,8 +214,6 @@ class OpenRouterClient:
         }
         # Store PDF content for follow-up questions
         self.pdf_content = ""
-        # Initialize image scraper
-        self.image_scraper = ImageScraper()
     
     def chat_completion(self,
                        messages: List[Dict[str, str]],
@@ -654,39 +285,24 @@ class OpenRouterClient:
             # Handle error or missing output
             if not text_response or "error" in text_response:
                 return {
-                    'text': f"Error: {text_response.get('error', 'Unknown error occurred')}",
-                    'images': []
+                    'text': f"Error: {text_response.get('error', 'Unknown error occurred')}"
                 }
 
             try:
                 content = text_response["choices"][0]["message"]["content"].strip()
                 text_content = content if content else "Sorry, I couldn't generate a response. Please try rephrasing your question."
-                
-                # Get images asynchronously using the original prompt
-                images = await self.image_scraper.search_images(prompt)
-                st.info(f"Found {len(images)} images for prompt: {prompt}")
-                
-                # Structure the response
-                result = {
-                    'text': text_content,
-                    'images': images
-                }
-                
-                st.info(f"Response structure: {result}")
-                return result
+                return {'text': text_content}
                 
             except (KeyError, IndexError, TypeError) as e:
                 st.error(f"Error processing response: {str(e)}")
                 return {
-                    'text': "Error: Unexpected response format from the model.",
-                    'images': []
+                    'text': "Error: Unexpected response format from the model."
                 }
                 
         except Exception as e:
             st.error(f"Error in simple_prompt: {str(e)}")
             return {
-                'text': f"Error: {str(e)}",
-                'images': []
+                'text': f"Error: {str(e)}"
             }
 
     def extract_pdf_from_bytes(self, pdf_bytes: bytes) -> str:
@@ -724,7 +340,7 @@ class OpenRouterClient:
     async def summarize_pdf(self, model: str, custom_prompt: str = None) -> Dict:
         """Generate a summary of the loaded PDF"""
         if not self.pdf_content:
-            return {"text": "Error: No PDF content loaded. Please upload a PDF first.", "images": []}
+            return {"text": "Error: No PDF content loaded. Please upload a PDF first."}
         
         # Prepare summary prompt
         if custom_prompt:
@@ -764,7 +380,7 @@ class OpenRouterClient:
     async def ask_pdf_question(self, question: str, model: str) -> Dict:
         """Ask a question about the loaded PDF content"""
         if not self.pdf_content:
-            return {"text": "Error: No PDF content loaded. Please upload a PDF first.", "images": []}
+            return {"text": "Error: No PDF content loaded. Please upload a PDF first."}
         
         # Prepare question prompt
         prompt = f"Based on the following PDF content, please answer this question: {question}\n\nPDF Content:\n{self.pdf_content}\n\nIf the answer is not found in the PDF content, please say so clearly."
@@ -840,21 +456,6 @@ def display_message(message: Dict):
                 # Handle text content
                 if 'text' in content:
                     st.write(content['text'])
-                
-                # Handle images
-                if 'images' in content:
-                    st.info(f"Found {len(content['images'])} images to display")
-                    for idx, img in enumerate(content['images']):
-                        try:
-                            if isinstance(img, dict) and 'image_data' in img:
-                                st.image(img['image_data'], caption=img.get('title', f'Image {idx + 1}'))
-                                st.success(f"Successfully displayed image {idx + 1}")
-                            else:
-                                st.warning(f"Invalid image data format for image {idx + 1}")
-                        except Exception as e:
-                            st.error(f"Error displaying image {idx + 1}: {str(e)}")
-                else:
-                    st.warning("No images found in content")
             else:
                 st.warning(f"Unexpected content type: {type(content)}")
             

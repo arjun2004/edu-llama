@@ -16,9 +16,9 @@ This document provides a comprehensive analysis of all dependencies required for
 ### **HTTP Requests**
 
 - **Package**: `requests>=2.31.0,<3.0.0`
-- **Purpose**: API communication with OpenRouter and image scraping
-- **Used in**: `app.py` (OpenRouterClient, ImageScraper)
-- **Features**: Chat completions, image downloads, web scraping
+- **Purpose**: API communication with OpenRouter
+- **Used in**: `app.py`, `pages/quiz.py` (OpenRouterClient)
+- **Features**: Chat completions
 
 ### **PDF Processing**
 
@@ -55,9 +55,9 @@ This document provides a comprehensive analysis of all dependencies required for
 ### **Pillow (PIL)**
 
 - **Package**: `Pillow>=10.0.0,<11.0.0`
-- **Purpose**: Image processing and manipulation
-- **Used in**: `app.py` (ImageScraper)
-- **Features**: Image validation, resizing, format conversion
+- **Purpose**: Image library that matplotlib depends on
+- **Used in**: Not imported directly by the app; pinned for reproducible installs
+- **Features**: Image support for matplotlib (used by FER and the `cv.py` dashboard)
 
 ## 🎯 Computer Vision & AI
 
