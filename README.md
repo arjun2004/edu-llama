@@ -117,7 +117,7 @@ The key is kept only for your browser session. The Quiz page uses the same key, 
 | Quiz | Sidebar → **🧭 Navigation** → **🧠 Interactive Quiz**. Choose a topic and difficulty. |
 | Voice | Sidebar → **🎤 Voice Features** |
 | Focus timer | Sidebar → **⏱️ Pomodoro Focus Timer** |
-| Engagement monitoring | Sidebar → **📊 Engagement Monitoring** → **🎥 Enable Engagement Monitoring**. It uses the webcam. See [README_POPUP.md](README_POPUP.md). |
+| Engagement monitoring | Sidebar → **📊 Engagement Monitoring** → **🎥 Enable Engagement Monitoring**. It uses the webcam. After 15 seconds of continuous disengagement (looking away, sad or bored expression, or no face), a pop-up suggests a quick quiz to chill. It shows at most once every 2 minutes. Use **🧪 Test Disengagement Alert** to preview it. |
 
 You can also run the emotion detector on its own, in a desktop window:
 

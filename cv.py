@@ -3,7 +3,7 @@ import numpy as np
 from fer import FER
 import time
 import threading
-from collections import deque
+from collections import Counter, deque
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import tkinter as tk
@@ -55,7 +55,7 @@ class ImprovedEmotionDetector:
         self.engaged_emotions = {
             'happy': 0.8,
             'surprise': 0.6,
-            'neutral': 0.3   # Neutral can be engaged or disengaged
+            'neutral': 0.5   # Neutral can be engaged or disengaged (calm focus = neutral)
         }
         
         # Adaptive thresholds based on individual baseline
@@ -140,10 +140,7 @@ class ImprovedEmotionDetector:
         # Factor in eye contact (if face detected)
         if face_box is not None and frame is not None:
             eye_contact_score = self.analyze_eye_contact(frame, face_box)
-            engagement_score = 0.7 * engagement_score + 0.3 * eye_contact_score
-        
-        # Apply confidence weighting
-        engagement_score *= confidence
+            engagement_score = 0.75 * engagement_score + 0.25 * eye_contact_score
         
         # Normalize to 0-1 range
         engagement_score = max(0.0, min(1.0, engagement_score))
@@ -186,26 +183,11 @@ class ImprovedEmotionDetector:
             'timestamp': current_time
         })
         
-        # Apply temporal smoothing
+        # Apply temporal smoothing: majority vote over the last 5 states
+        # (score-weighting would always bias against DISENGAGED, whose scores are low by definition)
         if len(self.disengagement_history) >= 5:
             recent_states = [entry['state'] for entry in list(self.disengagement_history)[-5:]]
-            recent_scores = [entry['score'] for entry in list(self.disengagement_history)[-5:]]
-            
-            # Use majority voting with score weighting
-            state_counts = {}
-            weighted_scores = {}
-            
-            for i, state in enumerate(recent_states):
-                if state not in state_counts:
-                    state_counts[state] = 0
-                    weighted_scores[state] = 0
-                state_counts[state] += 1
-                weighted_scores[state] += recent_scores[i]
-            
-            # Choose state with highest weighted score
-            if weighted_scores:
-                smoothed_state = max(weighted_scores.items(), key=lambda x: x[1])[0]
-                self.current_engagement_state = smoothed_state
+            self.current_engagement_state = Counter(recent_states).most_common(1)[0][0]
         else:
             self.current_engagement_state = engagement_state
         
